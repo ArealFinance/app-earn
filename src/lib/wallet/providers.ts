@@ -13,7 +13,7 @@
  * We narrow each shape just enough to compile.
  */
 
-import type { PublicKey } from '@solana/web3.js';
+import type { PublicKey, Transaction } from '@solana/web3.js';
 
 export type WalletProviderId = 'phantom' | 'solflare' | 'backpack';
 
@@ -27,6 +27,12 @@ export interface InjectedWallet {
 	publicKey?: PublicKey | null;
 	connect: () => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	/**
+	 * Sign + submit a transaction, returning its signature. All three target
+	 * providers expose `signAndSendTransaction`; we normalise the return to the
+	 * base58 signature string.
+	 */
+	signAndSendTransaction: (tx: Transaction) => Promise<string>;
 }
 
 export interface ConnectResult {
@@ -35,11 +41,15 @@ export interface ConnectResult {
 	adapter: InjectedWallet;
 }
 
+/** Common shape of the provider's signAndSendTransaction return. */
+type SignAndSendResult = string | { signature: string };
+
 interface PhantomLike {
 	isPhantom?: boolean;
 	publicKey?: PublicKey | null;
 	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
 
 interface SolflareLike {
@@ -47,6 +57,7 @@ interface SolflareLike {
 	publicKey?: PublicKey | null;
 	connect: () => Promise<boolean | { publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
 
 interface BackpackLike {
@@ -54,6 +65,12 @@ interface BackpackLike {
 	publicKey?: PublicKey | null;
 	connect: () => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
+}
+
+/** Normalise the various signAndSendTransaction return shapes to a signature. */
+function normaliseSignature(result: SignAndSendResult): string {
+	return typeof result === 'string' ? result : result.signature;
 }
 
 declare global {
@@ -104,7 +121,9 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 				? {
 						publicKey: window.solana.publicKey ?? null,
 						connect: () => window.solana!.connect(),
-						disconnect: () => window.solana!.disconnect()
+						disconnect: () => window.solana!.disconnect(),
+						signAndSendTransaction: async (tx) =>
+							normaliseSignature(await window.solana!.signAndSendTransaction(tx))
 					}
 				: null;
 		case 'solflare':
@@ -123,7 +142,9 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 							}
 							return { publicKey: window.solflare!.publicKey };
 						},
-						disconnect: () => window.solflare!.disconnect()
+						disconnect: () => window.solflare!.disconnect(),
+						signAndSendTransaction: async (tx) =>
+							normaliseSignature(await window.solflare!.signAndSendTransaction(tx))
 					}
 				: null;
 		case 'backpack':
@@ -131,7 +152,9 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 				? {
 						publicKey: window.backpack.publicKey ?? null,
 						connect: () => window.backpack!.connect(),
-						disconnect: () => window.backpack!.disconnect()
+						disconnect: () => window.backpack!.disconnect(),
+						signAndSendTransaction: async (tx) =>
+							normaliseSignature(await window.backpack!.signAndSendTransaction(tx))
 					}
 				: null;
 	}

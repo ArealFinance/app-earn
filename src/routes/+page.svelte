@@ -9,16 +9,15 @@
 	 * All numbers come from `$lib/earn/mock` — the single swap-out point for when
 	 * the earn + staking contracts deploy (Phase 4). DemoBadge stays visible.
 	 */
+	import { onMount } from 'svelte';
 	import { wallet } from '$lib/wallet/store';
 	import {
-		mockPublicStats,
 		generatePortfolioHistory,
-		MOCK_BOOK_NAV,
-		MOCK_MARKET_PRICE,
-		MOCK_STRWT_RATE,
-		MOCK_STAKING_APY
+		PLACEHOLDER_STAKING_APY,
+		MARKET_PRICE
 	} from '$lib/earn/mock';
-	import type { Period } from '$lib/earn/types';
+	import { fetchBookNav, fetchStrwtRate, fetchTvl } from '$lib/chain/reads';
+	import type { Period, PublicStats as PublicStatsType } from '$lib/earn/types';
 
 	import DemoBadge from '$lib/components/DemoBadge.svelte';
 	import WalletPill from '$lib/components/WalletPill.svelte';
@@ -30,16 +29,43 @@
 	import PositionsList from '$lib/components/PositionsList.svelte';
 	import RatesBar from '$lib/components/RatesBar.svelte';
 	import BuyModal from '$lib/components/BuyModal.svelte';
-	import SellModal from '$lib/components/SellModal.svelte';
 	import StakeModal from '$lib/components/StakeModal.svelte';
 	import UnstakeModal from '$lib/components/UnstakeModal.svelte';
 
-	// ── Protocol-level mock data ────────────────────────────────────────────
-	const stats = mockPublicStats();
-	const bookNav = MOCK_BOOK_NAV;
-	const marketPrice = MOCK_MARKET_PRICE;
-	const strwtRate = MOCK_STRWT_RATE;
-	const apy = MOCK_STAKING_APY;
+	// ── Protocol-level state ─────────────────────────────────────────────────
+	// Book NAV + stRWT rate + TVL are REAL on-chain reads (devnet). Market price
+	// has no DEX pool yet (null → "—"); APY is a historical placeholder.
+	const marketPrice = MARKET_PRICE; // null until a DEX pool is seeded
+	const apy = PLACEHOLDER_STAKING_APY;
+
+	// Defaults match the empty on-chain state ($1.00 NAV, 10.0 rate) so the
+	// first paint is correct even before the async read resolves.
+	let bookNav = $state(1);
+	let strwtRate = $state(10);
+	let tvl = $state(0);
+
+	const stats = $derived<PublicStatsType>({
+		bookNav,
+		marketPrice,
+		strwtRate,
+		stakingApy: apy,
+		tvl
+	});
+
+	onMount(async () => {
+		try {
+			const [nav, rate, tvlUsd] = await Promise.all([
+				fetchBookNav(),
+				fetchStrwtRate(),
+				fetchTvl()
+			]);
+			bookNav = nav;
+			strwtRate = rate;
+			tvl = tvlUsd;
+		} catch {
+			// Keep the empty-state defaults on RPC failure; the UI still renders.
+		}
+	});
 
 	// ── Wallet-derived state ─────────────────────────────────────────────────
 	const connected = $derived($wallet.connected);
@@ -77,7 +103,9 @@
 	);
 
 	// ── Action capability flags ──────────────────────────────────────────────
-	const canSell = $derived(rwt > 0);
+	// Sell is disabled entirely: no RWT/USDC DEX pool is seeded on devnet yet.
+	const canSell = false;
+	const sellDisabledReason = 'Sell opens once the RWT/USDC pool is live';
 	const canStake = $derived(rwt > 0);
 	const canUnstake = $derived(strwt > 0);
 
@@ -93,8 +121,18 @@
 		activeSheet = null;
 	}
 
-	function handleClaim(ticketId: string): void {
-		wallet.mockClaimUnstake(ticketId);
+	let claimError = $state<string | null>(null);
+
+	async function handleClaim(ticketId: string): Promise<void> {
+		// PositionsList passes the ticket's nonce as the id payload for claiming.
+		const ticket = pendingUnstakes.find((t) => t.id === ticketId);
+		if (!ticket?.nonce) return;
+		claimError = null;
+		try {
+			await wallet.completeUnstake(ticket.nonce);
+		} catch (e) {
+			claimError = e instanceof Error ? e.message : 'Claim failed';
+		}
 	}
 </script>
 
@@ -139,7 +177,7 @@
 
 			<YieldStats {apy} {earnedUsd} />
 
-			<ActionBar {canSell} {canStake} {canUnstake} onAction={openSheet} />
+			<ActionBar {canSell} {sellDisabledReason} {canStake} {canUnstake} onAction={openSheet} />
 
 			<PositionsList
 				{rwt}
@@ -164,8 +202,7 @@
 	</footer>
 </main>
 
-<BuyModal open={activeSheet === 'buy'} {bookNav} {marketPrice} onClose={closeSheet} />
-<SellModal open={activeSheet === 'sell'} {marketPrice} {bookNav} onClose={closeSheet} />
+<BuyModal open={activeSheet === 'buy'} {bookNav} onClose={closeSheet} />
 <StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} onClose={closeSheet} />
 <UnstakeModal open={activeSheet === 'unstake'} {strwtRate} onClose={closeSheet} />
 

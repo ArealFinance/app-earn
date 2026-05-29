@@ -1,20 +1,23 @@
 <script lang="ts">
 	/**
-	 * Persistent "Demo data" badge.
+	 * Persistent "Devnet" badge.
+	 *
+	 * NAV, the stRWT rate, balances and transactions are REAL devnet state.
+	 * The badge stays visible so users know this is not mainnet (and that a
+	 * few derived figures — APY history, market price — are still placeholders).
 	 *
 	 * Sits in the top-right corner. When the wallet pill is also visible
-	 * (connected state), the pill renders to the right of this badge and
-	 * the badge slides slightly left — both share the same fixed strip.
+	 * (connected state), the pill renders to the right of this badge.
 	 */
 </script>
 
 <span
 	class="demo-badge"
-	title="NAV and APR are mocked. Mint functionality is not connected to a live contract."
-	aria-label="Demo data — values shown are mocked"
+	title="Live Solana devnet. NAV, rate, balances and transactions are real on-chain state. APY history and market price are placeholders until a DEX pool is seeded."
+	aria-label="Devnet — live on-chain state, not mainnet"
 >
 	<span class="dot" aria-hidden="true"></span>
-	Demo data
+	Devnet
 </span>
 
 <style>

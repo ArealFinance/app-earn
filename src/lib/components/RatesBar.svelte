@@ -7,7 +7,8 @@
 
 	interface Props {
 		bookNav: number;
-		marketPrice: number;
+		/** Market (DEX) price, or null when no DEX pool exists yet. */
+		marketPrice: number | null;
 		strwtRate: number;
 	}
 
@@ -22,7 +23,9 @@
 	<span class="sep" aria-hidden="true">·</span>
 	<div class="rate">
 		<span class="label">Market</span>
-		<span class="val tabular">{formatNav(marketPrice)}</span>
+		<span class="val tabular" title={marketPrice === null ? 'No DEX pool yet' : undefined}>
+			{marketPrice === null ? '—' : formatNav(marketPrice)}
+		</span>
 	</div>
 	<span class="sep" aria-hidden="true">·</span>
 	<div class="rate">

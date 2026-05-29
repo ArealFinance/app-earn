@@ -6,7 +6,8 @@
 	import { CheckCircle2 } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
-	import { mockStakeQuote } from '$lib/earn/mock';
+	import { stakePreview } from '$lib/earn/mock';
+	import { MIN_STAKE_AMOUNT_UI } from '$lib/chain/config';
 	import { formatTokenAmount, formatApr, formatRate, formatUsd } from '$lib/utils/format';
 	import { wallet } from '$lib/wallet/store';
 
@@ -24,6 +25,7 @@
 
 	let amountInput = $state('');
 	let status = $state<Status>('idle');
+	let txError = $state<string | null>(null);
 
 	const rwt = $derived($wallet.rwt);
 	const amount = $derived.by(() => {
@@ -31,17 +33,27 @@
 		return Number.isFinite(n) && n > 0 ? n : 0;
 	});
 
-	const quote = $derived(mockStakeQuote(amount, strwtRate));
+	const quote = $derived(stakePreview(amount, strwtRate));
 	const overBalance = $derived(amount > rwt);
-	const error = $derived(overBalance ? 'Amount exceeds RWT balance' : null);
-	const canSubmit = $derived(amount > 0 && !overBalance && status === 'idle');
+	const belowMin = $derived(amount > 0 && amount < MIN_STAKE_AMOUNT_UI);
+	const error = $derived(
+		overBalance
+			? 'Amount exceeds RWT balance'
+			: belowMin
+				? `Minimum stake is ${MIN_STAKE_AMOUNT_UI} RWT`
+				: null
+	);
+	const canSubmit = $derived(
+		amount > 0 && !overBalance && !belowMin && status === 'idle'
+	);
 
-	// Projected first-year earnings, in USD, at the historical APY.
+	// Projected first-year earnings, in USD, at the historical (placeholder) APY.
 	const projectedEarningsUsd = $derived(amount * bookNav * quote.projectedApy);
 
 	function reset(): void {
 		amountInput = '';
 		status = 'idle';
+		txError = null;
 	}
 
 	function handleClose(): void {
@@ -52,10 +64,15 @@
 	async function confirm(): Promise<void> {
 		if (!canSubmit) return;
 		status = 'submitting';
-		await new Promise((r) => setTimeout(r, 1400));
-		wallet.mockStake(amount, quote.strwtOut);
-		status = 'success';
-		setTimeout(handleClose, 1400);
+		txError = null;
+		try {
+			await wallet.stakeRwt(amount);
+			status = 'success';
+			setTimeout(handleClose, 1600);
+		} catch (e) {
+			txError = e instanceof Error ? e.message : 'Transaction failed';
+			status = 'idle';
+		}
 	}
 </script>
 
@@ -64,7 +81,7 @@
 		<div class="success">
 			<CheckCircle2 size={44} aria-hidden="true" />
 			<p class="success-title">Staked — got {formatTokenAmount(quote.strwtOut)} stRWT</p>
-			<p class="demo">Demo mode — no real tx submitted</p>
+			<p class="demo">Confirmed on devnet</p>
 		</div>
 	{:else}
 		<p class="note">
@@ -86,7 +103,7 @@
 				<span class="tabular">{formatRate(quote.rateUsed)}</span>
 			</div>
 			<div class="preview-row">
-				<span>Projected APY</span>
+				<span>Projected APY (demo)</span>
 				<span class="tabular accent">{formatApr(quote.projectedApy)}</span>
 			</div>
 			<div class="preview-row">
@@ -99,7 +116,11 @@
 			</div>
 		</div>
 
-		<p class="caveat">APY is historical and not a guarantee.</p>
+		<p class="caveat">APY is a historical placeholder, not a guarantee.</p>
+
+		{#if txError}
+			<p class="tx-error" role="alert">{txError}</p>
+		{/if}
 
 		<div class="actions">
 			<button class="btn ghost" type="button" onclick={handleClose} disabled={status === 'submitting'}>
@@ -110,7 +131,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Demo mode — no real tx submitted</p>
+		<p class="demo">Live devnet — a real transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 
@@ -154,6 +175,12 @@
 	.caveat {
 		font-size: var(--text-2xs);
 		color: var(--color-text-muted);
+		text-align: center;
+	}
+
+	.tx-error {
+		font-size: var(--text-sm);
+		color: var(--color-danger, #ef4444);
 		text-align: center;
 	}
 

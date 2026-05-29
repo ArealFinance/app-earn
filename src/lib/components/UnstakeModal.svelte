@@ -7,7 +7,7 @@
 	import { CheckCircle2, AlertTriangle } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
-	import { mockUnstakeQuote } from '$lib/earn/mock';
+	import { unstakePreview } from '$lib/earn/mock';
 	import { formatTokenAmount, formatRate, formatUnlockDate } from '$lib/utils/format';
 	import { wallet } from '$lib/wallet/store';
 
@@ -23,6 +23,7 @@
 
 	let amountInput = $state('');
 	let status = $state<Status>('idle');
+	let txError = $state<string | null>(null);
 
 	const strwt = $derived($wallet.strwt);
 	const amount = $derived.by(() => {
@@ -30,7 +31,7 @@
 		return Number.isFinite(n) && n > 0 ? n : 0;
 	});
 
-	const quote = $derived(mockUnstakeQuote(amount, strwtRate));
+	const quote = $derived(unstakePreview(amount, strwtRate));
 	const overBalance = $derived(amount > strwt);
 	const error = $derived(overBalance ? 'Amount exceeds stRWT balance' : null);
 	const canSubmit = $derived(amount > 0 && !overBalance && status === 'idle');
@@ -38,6 +39,7 @@
 	function reset(): void {
 		amountInput = '';
 		status = 'idle';
+		txError = null;
 	}
 
 	function handleClose(): void {
@@ -48,12 +50,15 @@
 	async function confirm(): Promise<void> {
 		if (!canSubmit) return;
 		status = 'submitting';
-		await new Promise((r) => setTimeout(r, 1400));
-		// Re-quote at confirm time so unlockTs is anchored to "now".
-		const final = mockUnstakeQuote(amount, strwtRate);
-		wallet.mockUnstake(amount, final.rwtOut, final.unlockTs);
-		status = 'success';
-		setTimeout(handleClose, 1600);
+		txError = null;
+		try {
+			await wallet.initiateUnstake(amount);
+			status = 'success';
+			setTimeout(handleClose, 1800);
+		} catch (e) {
+			txError = e instanceof Error ? e.message : 'Transaction failed';
+			status = 'idle';
+		}
 	}
 </script>
 
@@ -65,7 +70,7 @@
 				Unstaking {formatTokenAmount(quote.rwtOut)} RWT
 			</p>
 			<p class="success-sub">Claimable {formatUnlockDate(quote.unlockTs)} (21-day cooldown)</p>
-			<p class="demo">Demo mode — no real tx submitted</p>
+			<p class="demo">Confirmed on devnet</p>
 		</div>
 	{:else}
 		<AmountInput
@@ -100,6 +105,10 @@
 			</div>
 		</div>
 
+		{#if txError}
+			<p class="tx-error" role="alert">{txError}</p>
+		{/if}
+
 		<div class="actions">
 			<button class="btn ghost" type="button" onclick={handleClose} disabled={status === 'submitting'}>
 				Cancel
@@ -109,7 +118,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Demo mode — no real tx submitted</p>
+		<p class="demo">Live devnet — a real transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 
@@ -155,6 +164,12 @@
 		color: var(--color-text);
 		font-weight: var(--font-weight-semibold);
 		font-size: var(--text-base);
+	}
+
+	.tx-error {
+		font-size: var(--text-sm);
+		color: var(--color-danger, #ef4444);
+		text-align: center;
 	}
 
 	.actions {

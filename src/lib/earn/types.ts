@@ -20,26 +20,32 @@ export type Period = 'day' | 'week' | 'month';
 
 /** Public, wallet-agnostic protocol stats (shown pre-connect). */
 export interface PublicStats {
-	/** Book NAV price per RWT (USD). */
+	/** Book NAV price per RWT (USD) — real on-chain read. */
 	bookNav: number;
-	/** Market (DEX) price per RWT (USD). */
-	marketPrice: number;
-	/** Current stRWT → RWT exchange rate. */
+	/** Market (DEX) price per RWT (USD), or null when no DEX pool exists. */
+	marketPrice: number | null;
+	/** Current stRWT → RWT exchange rate — real on-chain read. */
 	strwtRate: number;
-	/** Historical staking APY (fraction, e.g. 0.142). */
+	/** Historical staking APY (fraction). Placeholder until rate history exists. */
 	stakingApy: number;
-	/** Total value locked across the basket (USD). */
+	/** Total value locked across the basket (USD) — real on-chain read. */
 	tvl: number;
 }
 
 /** A pending unstake ticket (21-day cooldown). */
 export interface PendingUnstake {
-	/** Stable id for keyed rendering. */
+	/** Stable id for keyed rendering (the on-chain ticket PDA, base58). */
 	id: string;
 	/** RWT fixed at initiation (does not earn during cooldown). */
 	amountRwt: number;
 	/** Unix ms timestamp when the RWT becomes claimable. */
 	unlockTs: number;
+	/**
+	 * Client-supplied nonce the ticket was created with (decimal string, u64).
+	 * Required to build `complete_unstake`. Present for on-chain tickets; may be
+	 * absent for an optimistic local ticket inserted right after initiate.
+	 */
+	nonce?: string;
 }
 
 /** The full per-wallet position snapshot. */
@@ -50,38 +56,6 @@ export interface Positions {
 	strwt: number;
 	/** Pending unstake tickets in cooldown. */
 	pendingUnstakes: PendingUnstake[];
-}
-
-/** One leg of a Buy quote (mint or DEX). */
-export interface BuyPath {
-	/** RWT the user receives on this path. */
-	rwtOut: number;
-	/** Effective price per RWT (USD). */
-	price: number;
-	/** Cost in USDC paid on this path (body + fee/slippage). */
-	totalUsdc: number;
-}
-
-/** Buy quote — compares the mint path against the DEX path. */
-export interface BuyQuote {
-	/** Mint path: Book NAV × (1 + fee). */
-	mintPath: BuyPath & { fee: number };
-	/** DEX path: market price + slippage. */
-	dexPath: BuyPath & { slippage: number };
-	/** Which path is cheaper for the user (more RWT out). */
-	cheaper: 'mint' | 'dex';
-}
-
-/** Sell quote — DEX only (no on-chain redeem). */
-export interface SellQuote {
-	/** USDC the user receives after slippage + fee. */
-	usdcOut: number;
-	/** Effective DEX price per RWT (USD). */
-	price: number;
-	/** Slippage applied (fraction). */
-	slippage: number;
-	/** True when market price is below Book NAV (selling below book value). */
-	belowBookNav: boolean;
 }
 
 /** Stake quote — RWT → stRWT at the current rate. */

@@ -1,34 +1,33 @@
 <script lang="ts">
 	/**
-	 * Buy RWT — two acquisition paths, the cheaper one highlighted.
+	 * Buy RWT — Mint path only (live devnet).
 	 *
-	 *   Mint: Book NAV × (1 + 1% fee) — cheaper when market ≥ Book NAV.
-	 *   DEX:  market price + slippage + LP fee — cheaper when market < Book NAV.
+	 *   Mint: Book NAV × (1 + 1% fee). Deposits USDC, mints earn-RWT at Book NAV.
 	 *
-	 * The user picks a path (defaults to the cheaper). Mock-only: no tx submitted.
+	 * The DEX path is unavailable until a RWT/USDC pool is seeded; it's shown as
+	 * a disabled note. Mint submits a REAL transaction via `wallet.mintRwt`.
 	 */
 	import { CheckCircle2 } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
-	import { mockBuyQuote } from '$lib/earn/mock';
+	import { mintPreview, MINT_FEE_RATE } from '$lib/earn/mock';
+	import { MIN_MINT_AMOUNT_UI } from '$lib/chain/config';
 	import { formatTokenAmount, formatUsd, formatNav } from '$lib/utils/format';
 	import { wallet } from '$lib/wallet/store';
 
 	interface Props {
 		open: boolean;
 		bookNav: number;
-		marketPrice: number;
 		onClose: () => void;
 	}
 
-	let { open, bookNav, marketPrice, onClose }: Props = $props();
+	let { open, bookNav, onClose }: Props = $props();
 
 	type Status = 'idle' | 'submitting' | 'success';
-	type Path = 'mint' | 'dex';
 
 	let amountInput = $state('');
 	let status = $state<Status>('idle');
-	let selected = $state<Path | null>(null);
+	let txError = $state<string | null>(null);
 
 	const usdc = $derived($wallet.usdc);
 	const amount = $derived.by(() => {
@@ -36,22 +35,26 @@
 		return Number.isFinite(n) && n > 0 ? n : 0;
 	});
 
-	const quote = $derived(mockBuyQuote(amount, bookNav, marketPrice));
-	// Default to the cheaper path unless the user has picked one explicitly.
-	const activePath = $derived<Path>(selected ?? quote.cheaper);
+	const quote = $derived(mintPreview(amount, bookNav));
+	const activeRwtOut = $derived(quote.rwtOut);
 
 	const overBalance = $derived(amount > usdc);
-	const error = $derived(overBalance ? 'Amount exceeds balance' : null);
-	const canSubmit = $derived(amount > 0 && !overBalance && status === 'idle');
-
-	const activeRwtOut = $derived(
-		activePath === 'mint' ? quote.mintPath.rwtOut : quote.dexPath.rwtOut
+	const belowMin = $derived(amount > 0 && amount < MIN_MINT_AMOUNT_UI);
+	const error = $derived(
+		overBalance
+			? 'Amount exceeds balance'
+			: belowMin
+				? `Minimum deposit is ${MIN_MINT_AMOUNT_UI} USDC`
+				: null
+	);
+	const canSubmit = $derived(
+		amount > 0 && !overBalance && !belowMin && status === 'idle'
 	);
 
 	function reset(): void {
 		amountInput = '';
 		status = 'idle';
-		selected = null;
+		txError = null;
 	}
 
 	function handleClose(): void {
@@ -62,16 +65,21 @@
 	async function confirm(): Promise<void> {
 		if (!canSubmit) return;
 		status = 'submitting';
-		await new Promise((r) => setTimeout(r, 1400));
-		wallet.mockBuy(amount, activeRwtOut);
-		status = 'success';
-		setTimeout(handleClose, 1400);
+		txError = null;
+		try {
+			await wallet.mintRwt(amount);
+			status = 'success';
+			setTimeout(handleClose, 1600);
+		} catch (e) {
+			txError = e instanceof Error ? e.message : 'Transaction failed';
+			status = 'idle';
+		}
 	}
 
-	// Reset selection whenever the sheet re-opens.
 	$effect(() => {
 		if (open) {
 			status = 'idle';
+			txError = null;
 		}
 	});
 </script>
@@ -80,8 +88,8 @@
 	{#if status === 'success'}
 		<div class="success">
 			<CheckCircle2 size={44} aria-hidden="true" />
-			<p class="success-title">Bought {formatTokenAmount(activeRwtOut)} RWT</p>
-			<p class="demo">Demo mode — no real tx submitted</p>
+			<p class="success-title">Minted {formatTokenAmount(activeRwtOut)} RWT</p>
+			<p class="demo">Confirmed on devnet</p>
 		</div>
 	{:else}
 		<AmountInput
@@ -94,67 +102,53 @@
 			{error}
 		/>
 
-		<div class="paths" role="radiogroup" aria-label="Choose a path">
-			{#each (['mint', 'dex'] as const) as path (path)}
-				{@const leg = path === 'mint' ? quote.mintPath : quote.dexPath}
-				{@const isCheaper = quote.cheaper === path}
-				<button
-					type="button"
-					class="path"
-					class:active={activePath === path}
-					role="radio"
-					aria-checked={activePath === path}
-					onclick={() => (selected = path)}
-					disabled={status === 'submitting'}
-				>
-					<span class="path-head">
-						<span class="path-name">{path === 'mint' ? 'Mint' : 'DEX'}</span>
-						{#if isCheaper}
-							<span class="badge">Cheaper</span>
-						{/if}
-					</span>
-					<span class="path-out tabular">{formatTokenAmount(leg.rwtOut)} RWT</span>
-					<span class="path-price tabular">{formatNav(leg.price)} / RWT</span>
-				</button>
-			{/each}
+		<div class="paths">
+			<div class="path active">
+				<span class="path-head">
+					<span class="path-name">Mint</span>
+					<span class="badge">Active</span>
+				</span>
+				<span class="path-out tabular">{formatTokenAmount(activeRwtOut)} RWT</span>
+				<span class="path-price tabular">{formatNav(quote.price)} / RWT</span>
+			</div>
+			<div class="path disabled" title="Sell opens once the RWT/USDC pool is live">
+				<span class="path-head">
+					<span class="path-name">DEX</span>
+				</span>
+				<span class="path-out tabular">—</span>
+				<span class="path-price tabular">No market yet</span>
+			</div>
 		</div>
 
 		<div class="preview">
-			{#if activePath === 'mint'}
-				<div class="preview-row">
-					<span>Mint fee (1%)</span>
-					<span class="tabular">−{formatUsd(quote.mintPath.fee)}</span>
-				</div>
-				<div class="preview-row">
-					<span>Price (Book NAV +1%)</span>
-					<span class="tabular">{formatNav(quote.mintPath.price)}</span>
-				</div>
-			{:else}
-				<div class="preview-row">
-					<span>Est. slippage</span>
-					<span class="tabular">−{formatUsd(quote.dexPath.slippage)}</span>
-				</div>
-				<div class="preview-row">
-					<span>DEX price</span>
-					<span class="tabular">{formatNav(quote.dexPath.price)}</span>
-				</div>
-			{/if}
+			<div class="preview-row">
+				<span>Mint fee ({(MINT_FEE_RATE * 100).toFixed(0)}%)</span>
+				<span class="tabular">−{formatUsd(quote.fee)}</span>
+			</div>
+			<div class="preview-row">
+				<span>Price (Book NAV +1%)</span>
+				<span class="tabular">{formatNav(quote.price)}</span>
+			</div>
 			<div class="preview-row total">
 				<span>You receive</span>
 				<span class="tabular">{formatTokenAmount(activeRwtOut)} RWT</span>
 			</div>
 		</div>
 
+		{#if txError}
+			<p class="tx-error" role="alert">{txError}</p>
+		{/if}
+
 		<div class="actions">
 			<button class="btn ghost" type="button" onclick={handleClose} disabled={status === 'submitting'}>
 				Cancel
 			</button>
 			<button class="btn primary" type="button" onclick={confirm} disabled={!canSubmit}>
-				{status === 'submitting' ? 'Confirming…' : 'Confirm Buy'}
+				{status === 'submitting' ? 'Confirming…' : 'Confirm Mint'}
 			</button>
 		</div>
 
-		<p class="demo">Demo mode — no real tx submitted</p>
+		<p class="demo">Live devnet — a real transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 
@@ -180,6 +174,17 @@
 	.path.active {
 		border-color: var(--color-primary);
 		background: var(--color-info-tint);
+	}
+
+	.path.disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.tx-error {
+		font-size: var(--text-sm);
+		color: var(--color-danger, #ef4444);
+		text-align: center;
 	}
 
 	.path-head {

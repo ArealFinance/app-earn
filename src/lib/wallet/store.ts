@@ -1,21 +1,16 @@
 /**
  * Wallet store — pure Svelte writable (not a rune) so it can be consumed
- * from `.ts` files (mock data layer, util fns) just as easily as `.svelte`
- * components via `$wallet`.
+ * from `.ts` files and `.svelte` components alike via `$wallet`.
  *
- * Holds:
- *   - connected pubkey + adapter (so we can disconnect cleanly)
- *   - USDC balance (real, fetched from RPC after connect)
- *   - RWT balance (mocked — would be a real RPC read post-launch)
+ * Phase 4.2d: balances + positions are now REAL on-chain reads against the
+ * live devnet `earn` + `staking` programs (see `$lib/chain/reads`). The action
+ * helpers build + submit REAL transactions via the connected provider
+ * (`$lib/chain/tx`). Only the genuinely-unavailable bits (APY history, market
+ * price, portfolio history) remain mocked in `$lib/earn/mock`.
  */
 
 import { writable, get } from 'svelte/store';
-import {
-	Connection,
-	PublicKey,
-	type Commitment
-} from '@solana/web3.js';
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import {
 	connect as providerConnect,
 	disconnect as providerDisconnect,
@@ -24,17 +19,20 @@ import {
 	type WalletProviderId
 } from './providers';
 import {
-	mockRwtBalance,
-	mockStrwtBalance,
-	mockPendingUnstakes
-} from '$lib/earn/mock';
+	fetchRwtBalance,
+	fetchStrwtBalance,
+	fetchUsdcBalance,
+	fetchPendingUnstakes
+} from '$lib/chain/reads';
+import {
+	buildMintRwt,
+	buildStake,
+	buildInitiateUnstake,
+	buildCompleteUnstake,
+	type SendFn
+} from '$lib/chain/tx';
+import { connection, COMMITMENT } from '$lib/chain/config';
 import type { PendingUnstake } from '$lib/earn/types';
-
-export const RPC_URL = 'https://rpc.areal.finance';
-export const COMMITMENT: Commitment = 'confirmed';
-
-// Mainnet USDC mint — matches the value used by the main app.
-export const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
 export interface WalletState {
 	connected: boolean;
@@ -43,12 +41,14 @@ export interface WalletState {
 	publicKey: PublicKey | null;
 	address: string | null;
 	usdc: number;
-	/** Liquid RWT (mocked — would be an on-chain ATA read post-launch). */
+	/** Liquid RWT (on-chain earn-RWT ATA). */
 	rwt: number;
-	/** stRWT staking share token (mocked). */
+	/** stRWT staking share token (on-chain ATA). */
 	strwt: number;
-	/** Pending unstake tickets in cooldown (mocked). */
+	/** Pending unstake tickets in cooldown (on-chain UnstakeTicket PDAs). */
 	pendingUnstakes: PendingUnstake[];
+	/** True while balances are being (re)fetched from chain. */
+	loading: boolean;
 	error: string | null;
 }
 
@@ -62,26 +62,50 @@ const INITIAL: WalletState = {
 	rwt: 0,
 	strwt: 0,
 	pendingUnstakes: [],
+	loading: false,
 	error: null
 };
 
 function createWalletStore() {
 	const { subscribe, set, update } = writable<WalletState>(INITIAL);
 
-	// We hold the adapter outside reactive state — it's an object reference with
-	// no serializable identity. Keeping it in the store would force Svelte to
-	// diff a non-plain object on every update.
+	// Adapter held outside reactive state — a non-plain object reference.
 	let adapter: InjectedWallet | null = null;
-	const connection = new Connection(RPC_URL, COMMITMENT);
 
-	async function fetchUsdcBalance(pubkey: PublicKey): Promise<number> {
+	/** Bound send function for the connected adapter. Throws if not connected. */
+	const send: SendFn = async (tx: Transaction) => {
+		if (!adapter) throw new Error('Wallet not connected');
+		const signature = await adapter.signAndSendTransaction(tx);
+		// Wait for confirmation so a subsequent balance refresh reflects the tx.
+		await connection.confirmTransaction(
+			{
+				signature,
+				blockhash: tx.recentBlockhash!,
+				lastValidBlockHeight: tx.lastValidBlockHeight!
+			},
+			COMMITMENT
+		);
+		return signature;
+	};
+
+	/** Pulls all on-chain balances + tickets for a wallet into the store. */
+	async function loadChainState(pubkey: PublicKey): Promise<void> {
+		update((s) => ({ ...s, loading: true }));
 		try {
-			const ata = getAssociatedTokenAddressSync(USDC_MINT, pubkey);
-			const res = await connection.getTokenAccountBalance(ata, COMMITMENT);
-			return res.value.uiAmount ?? 0;
-		} catch {
-			// No ATA == zero balance. Any RPC error == surface zero, not crash.
-			return 0;
+			const [usdc, rwt, strwt, pendingUnstakes] = await Promise.all([
+				fetchUsdcBalance(pubkey),
+				fetchRwtBalance(pubkey),
+				fetchStrwtBalance(pubkey),
+				fetchPendingUnstakes(pubkey)
+			]);
+			update((s) =>
+				s.connected && s.publicKey?.equals(pubkey)
+					? { ...s, usdc, rwt, strwt, pendingUnstakes, loading: false }
+					: s
+			);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Failed to load balances';
+			update((s) => ({ ...s, loading: false, error: message }));
 		}
 	}
 
@@ -98,16 +122,13 @@ function createWalletStore() {
 				providerId: result.id,
 				publicKey: result.publicKey,
 				address: result.publicKey.toBase58(),
-				rwt: mockRwtBalance(result.publicKey),
-				strwt: mockStrwtBalance(result.publicKey),
-				pendingUnstakes: mockPendingUnstakes(result.publicKey),
+				loading: true,
 				error: null
 			}));
 
-			// Balance fetch happens asynchronously after the UI has flipped to
-			// connected — keeps the connect transition snappy.
-			const usdc = await fetchUsdcBalance(result.publicKey);
-			update((s) => (s.connected ? { ...s, usdc } : s));
+			// Chain reads happen after the UI flips to connected — keeps the
+			// transition snappy; balances arrive a moment later.
+			await loadChainState(result.publicKey);
 		} catch (err) {
 			adapter = null;
 			const message = err instanceof Error ? err.message : 'Connection failed';
@@ -122,72 +143,48 @@ function createWalletStore() {
 		set(INITIAL);
 	}
 
+	/** Refresh all on-chain balances + tickets for the connected wallet. */
 	async function refreshBalances(): Promise<void> {
 		const current = get({ subscribe });
 		if (!current.publicKey) return;
-		const usdc = await fetchUsdcBalance(current.publicKey);
-		update((s) => (s.connected ? { ...s, usdc } : s));
+		await loadChainState(current.publicKey);
 	}
 
-	// ── Mock action helpers ─────────────────────────────────────────────────
-	// Local-only simulations for the demo flows. No tx is ever submitted.
-	// Post-launch these are replaced by real instruction builders + a
-	// balance refresh; the component-facing signatures stay the same.
-
-	/** Buy: spend USDC, receive RWT (mint or DEX — both land as liquid RWT). */
-	function mockBuy(usdcSpent: number, rwtReceived: number): void {
-		update((s) => ({
-			...s,
-			usdc: Math.max(0, s.usdc - usdcSpent),
-			rwt: s.rwt + rwtReceived
-		}));
+	function requirePubkey(): PublicKey {
+		const current = get({ subscribe });
+		if (!current.publicKey) throw new Error('Wallet not connected');
+		return current.publicKey;
 	}
 
-	/** Sell: burn RWT on the DEX, receive USDC. */
-	function mockSell(rwtSold: number, usdcReceived: number): void {
-		update((s) => ({
-			...s,
-			rwt: Math.max(0, s.rwt - rwtSold),
-			usdc: s.usdc + usdcReceived
-		}));
+	// ── Real on-chain action helpers ─────────────────────────────────────────
+	// Each builds + submits a transaction, then refreshes balances from chain.
+
+	/** Mint RWT by depositing USDC at Book NAV (+1% fee). Returns the signature. */
+	async function mintRwt(usdcAmount: number): Promise<string> {
+		const sig = await buildMintRwt(requirePubkey(), usdcAmount, send);
+		await refreshBalances();
+		return sig;
 	}
 
-	/** Stake: lock RWT, receive stRWT. */
-	function mockStake(rwtStaked: number, strwtReceived: number): void {
-		update((s) => ({
-			...s,
-			rwt: Math.max(0, s.rwt - rwtStaked),
-			strwt: s.strwt + strwtReceived
-		}));
+	/** Stake RWT → stRWT at the current rate. Returns the signature. */
+	async function stakeRwt(rwtAmount: number): Promise<string> {
+		const sig = await buildStake(requirePubkey(), rwtAmount, send);
+		await refreshBalances();
+		return sig;
 	}
 
-	/** Unstake: burn stRWT now, create a cooldown ticket fixed at the rate. */
-	function mockUnstake(strwtBurned: number, rwtOut: number, unlockTs: number): void {
-		update((s) => ({
-			...s,
-			strwt: Math.max(0, s.strwt - strwtBurned),
-			pendingUnstakes: [
-				...s.pendingUnstakes,
-				{
-					id: `local-${Date.now()}`,
-					amountRwt: rwtOut,
-					unlockTs
-				}
-			]
-		}));
+	/** Initiate unstake (burn stRWT, start 21-day cooldown). Returns the signature. */
+	async function initiateUnstake(strwtAmount: number): Promise<string> {
+		const { signature } = await buildInitiateUnstake(requirePubkey(), strwtAmount, send);
+		await refreshBalances();
+		return signature;
 	}
 
-	/** Claim: a matured ticket releases its reserved RWT back to the wallet. */
-	function mockClaimUnstake(ticketId: string): void {
-		update((s) => {
-			const ticket = s.pendingUnstakes.find((t) => t.id === ticketId);
-			if (!ticket) return s;
-			return {
-				...s,
-				rwt: s.rwt + ticket.amountRwt,
-				pendingUnstakes: s.pendingUnstakes.filter((t) => t.id !== ticketId)
-			};
-		});
+	/** Complete a matured unstake ticket. `nonce` is the ticket's u64 (string). */
+	async function completeUnstake(nonce: string): Promise<string> {
+		const sig = await buildCompleteUnstake(requirePubkey(), nonce, send);
+		await refreshBalances();
+		return sig;
 	}
 
 	return {
@@ -195,11 +192,10 @@ function createWalletStore() {
 		connect: connectWallet,
 		disconnect: disconnectWallet,
 		refreshBalances,
-		mockBuy,
-		mockSell,
-		mockStake,
-		mockUnstake,
-		mockClaimUnstake
+		mintRwt,
+		stakeRwt,
+		initiateUnstake,
+		completeUnstake
 	};
 }
 

@@ -12,10 +12,12 @@
 		canSell: boolean;
 		canStake: boolean;
 		canUnstake: boolean;
+		/** Tooltip shown on the Sell button when it's disabled. */
+		sellDisabledReason?: string;
 		onAction: (action: Action) => void;
 	}
 
-	let { canSell, canStake, canUnstake, onAction }: Props = $props();
+	let { canSell, canStake, canUnstake, sellDisabledReason, onAction }: Props = $props();
 </script>
 
 <section class="action-bar" aria-label="Actions">
@@ -28,6 +30,7 @@
 		type="button"
 		onclick={() => onAction('sell')}
 		disabled={!canSell}
+		title={!canSell ? sellDisabledReason : undefined}
 	>
 		<Minus size={18} aria-hidden="true" />
 		<span>Sell</span>
