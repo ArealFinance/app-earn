@@ -1,61 +1,101 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import {
-		MOCK_APR_30D,
-		MOCK_INITIAL_NAV,
-		MOCK_TOTAL_BACKING,
-		generateNavHistory,
-		simulateLiveNav
-	} from '$lib/earn/mock';
+	/**
+	 * Earn MVP — single-scroll, mobile-first dashboard.
+	 *
+	 * State A (not connected): hero + connect CTA + public stats.
+	 * State B (connected):     portfolio header, yield, 4-action bar, positions,
+	 *                          rates. Balances are deterministic mocks (some 0).
+	 *
+	 * All numbers come from `$lib/earn/mock` — the single swap-out point for when
+	 * the earn + staking contracts deploy (Phase 4). DemoBadge stays visible.
+	 */
 	import { wallet } from '$lib/wallet/store';
-	import HeroStats from '$lib/components/HeroStats.svelte';
-	import BalanceCard from '$lib/components/BalanceCard.svelte';
-	import ConnectWalletButton from '$lib/components/ConnectWalletButton.svelte';
-	import WalletPill from '$lib/components/WalletPill.svelte';
-	import MintModal from '$lib/components/MintModal.svelte';
+	import {
+		mockPublicStats,
+		generatePortfolioHistory,
+		MOCK_BOOK_NAV,
+		MOCK_MARKET_PRICE,
+		MOCK_STRWT_RATE,
+		MOCK_STAKING_APY
+	} from '$lib/earn/mock';
+	import type { Period } from '$lib/earn/types';
+
 	import DemoBadge from '$lib/components/DemoBadge.svelte';
+	import WalletPill from '$lib/components/WalletPill.svelte';
+	import ConnectWalletButton from '$lib/components/ConnectWalletButton.svelte';
+	import PublicStats from '$lib/components/PublicStats.svelte';
+	import PortfolioHeader from '$lib/components/PortfolioHeader.svelte';
+	import YieldStats from '$lib/components/YieldStats.svelte';
+	import ActionBar from '$lib/components/ActionBar.svelte';
+	import PositionsList from '$lib/components/PositionsList.svelte';
+	import RatesBar from '$lib/components/RatesBar.svelte';
+	import BuyModal from '$lib/components/BuyModal.svelte';
+	import SellModal from '$lib/components/SellModal.svelte';
+	import StakeModal from '$lib/components/StakeModal.svelte';
+	import UnstakeModal from '$lib/components/UnstakeModal.svelte';
 
-	// Live-ish NAV — ticks ~once a second via the mock simulator.
-	let nav = $state(MOCK_INITIAL_NAV);
-	const history = generateNavHistory(30);
-	const apr = MOCK_APR_30D;
-	const totalBacking = MOCK_TOTAL_BACKING;
+	// ── Protocol-level mock data ────────────────────────────────────────────
+	const stats = mockPublicStats();
+	const bookNav = MOCK_BOOK_NAV;
+	const marketPrice = MOCK_MARKET_PRICE;
+	const strwtRate = MOCK_STRWT_RATE;
+	const apy = MOCK_STAKING_APY;
 
-	// NAV delta over the last 24h, computed from the synthesized history.
-	const navDeltaDay = $derived.by(() => {
-		if (history.length < 2) return 0;
-		const last = history[history.length - 1].nav;
-		const prev = history[history.length - 2].nav;
-		return prev > 0 ? (last - prev) / prev : 0;
-	});
-
-	let mintOpen = $state(false);
-	let interval: ReturnType<typeof setInterval> | null = null;
-
-	onMount(() => {
-		interval = setInterval(() => {
-			nav = simulateLiveNav();
-		}, 1500);
-	});
-
-	onDestroy(() => {
-		if (interval) clearInterval(interval);
-	});
-
-	function openMint(): void {
-		mintOpen = true;
-	}
-
-	function closeMint(): void {
-		mintOpen = false;
-	}
-
-	// Derive UI states from the wallet store.
+	// ── Wallet-derived state ─────────────────────────────────────────────────
 	const connected = $derived($wallet.connected);
-	const usdc = $derived($wallet.usdc);
 	const rwt = $derived($wallet.rwt);
-	const hasRwt = $derived(rwt > 0);
-	const costBasisUsd = $derived(rwt > 0 ? rwt * 1.0 : 0);
+	const strwt = $derived($wallet.strwt);
+	const pendingUnstakes = $derived($wallet.pendingUnstakes);
+
+	// Total portfolio value in USD: liquid RWT + stRWT valued in RWT, all × Book NAV.
+	// Pending-unstake RWT is reserved (fixed) but still belongs to the user → include.
+	const pendingRwt = $derived(
+		pendingUnstakes.reduce((sum, t) => sum + t.amountRwt, 0)
+	);
+	const totalRwtEquivalent = $derived(rwt + strwt * strwtRate + pendingRwt);
+	const totalValue = $derived(totalRwtEquivalent * bookNav);
+
+	// ── Period toggle + sparkline history ────────────────────────────────────
+	let period = $state<Period>('month');
+
+	const periodDays: Record<Period, number> = { day: 1, week: 7, month: 30 };
+	const periodGrowth: Record<Period, number> = { day: 0.004, week: 0.021, month: 0.083 };
+
+	// History is keyed to the current total and the selected window's growth.
+	const history = $derived(
+		generatePortfolioHistory(
+			Math.max(2, periodDays[period] + 1),
+			totalValue,
+			periodGrowth[period]
+		)
+	);
+	const changePct = $derived(periodGrowth[period]);
+
+	// Earned ($) over the window — value gained vs. the window's start.
+	const earnedUsd = $derived(
+		totalValue > 0 ? totalValue - totalValue / (1 + changePct) : 0
+	);
+
+	// ── Action capability flags ──────────────────────────────────────────────
+	const canSell = $derived(rwt > 0);
+	const canStake = $derived(rwt > 0);
+	const canUnstake = $derived(strwt > 0);
+
+	// ── Modal routing ─────────────────────────────────────────────────────────
+	type Sheet = 'buy' | 'sell' | 'stake' | 'unstake' | null;
+	let activeSheet = $state<Sheet>(null);
+
+	function openSheet(sheet: Exclude<Sheet, null>): void {
+		activeSheet = sheet;
+	}
+
+	function closeSheet(): void {
+		activeSheet = null;
+	}
+
+	function handleClaim(ticketId: string): void {
+		wallet.mockClaimUnstake(ticketId);
+	}
 </script>
 
 <header class="top-strip">
@@ -75,34 +115,44 @@
 	<div class="container">
 		{#if !connected}
 			<section class="hero">
-				<h1 class="hero-title">Earn yield on RWT</h1>
+				<h1 class="hero-title">Grow your USDC</h1>
 				<p class="hero-sub">
-					Real-world asset–backed token. NAV grows automatically. Sell anytime on the DEX.
+					Buy RWT — a token backed by real-world assets whose value grows over time.
+					Stake it to earn yield. Sell anytime on the DEX.
 				</p>
 			</section>
 
-			<HeroStats {nav} {apr} {totalBacking} />
+			<PublicStats {stats} />
 
 			<div class="cta-wrap">
 				<ConnectWalletButton />
 				<p class="cta-disclaimer">By connecting, you agree to terms (demo).</p>
 			</div>
 		{:else}
-			<BalanceCard
-				{hasRwt}
-				{usdc}
-				{rwt}
-				{nav}
-				{apr}
-				{costBasisUsd}
-				{navDeltaDay}
-				history={history}
-				onMint={openMint}
+			<PortfolioHeader
+				{totalValue}
+				{changePct}
+				{period}
+				{history}
+				onPeriodChange={(p) => (period = p)}
 			/>
 
-			{#if !hasRwt}
-				<HeroStats {nav} {apr} {totalBacking} />
-			{/if}
+			<YieldStats {apy} {earnedUsd} />
+
+			<ActionBar {canSell} {canStake} {canUnstake} onAction={openSheet} />
+
+			<PositionsList
+				{rwt}
+				{strwt}
+				{pendingUnstakes}
+				{bookNav}
+				{strwtRate}
+				{apy}
+				onBuy={() => openSheet('buy')}
+				onClaim={handleClaim}
+			/>
+
+			<RatesBar {bookNav} {marketPrice} {strwtRate} />
 		{/if}
 	</div>
 
@@ -114,7 +164,10 @@
 	</footer>
 </main>
 
-<MintModal {nav} open={mintOpen} onClose={closeMint} />
+<BuyModal open={activeSheet === 'buy'} {bookNav} {marketPrice} onClose={closeSheet} />
+<SellModal open={activeSheet === 'sell'} {marketPrice} {bookNav} onClose={closeSheet} />
+<StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} onClose={closeSheet} />
+<UnstakeModal open={activeSheet === 'unstake'} {strwtRate} onClose={closeSheet} />
 
 <style>
 	.top-strip {
@@ -181,8 +234,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
-		justify-content: center;
-		gap: var(--space-6);
+		gap: var(--space-4);
 		width: 100%;
 		max-width: 440px;
 		margin: 0 auto;
@@ -194,7 +246,7 @@
 		align-items: center;
 		gap: var(--space-3);
 		text-align: center;
-		padding: var(--space-4) 0;
+		padding: var(--space-6) 0 var(--space-2);
 	}
 
 	.hero-title {
@@ -245,8 +297,8 @@
 
 	@media (min-width: 768px) {
 		.container {
-			max-width: 520px;
-			gap: var(--space-8);
+			max-width: 480px;
+			gap: var(--space-5);
 		}
 
 		.hero-title {

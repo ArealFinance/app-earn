@@ -80,3 +80,57 @@ export function formatUsdDelta(value: number): string {
 	const sign = value > 0 ? '+' : value < 0 ? '-' : '';
 	return `${sign}${USD_FORMATTER.format(Math.abs(value))}`;
 }
+
+/**
+ * Format a token amount (RWT / stRWT) for display. Trims trailing zeros while
+ * keeping thousand separators — e.g. `1,000`, `179.5`, `0.25`.
+ */
+export function formatTokenAmount(value: number, maxDecimals = 4): string {
+	if (!Number.isFinite(value)) return '0';
+	return value.toLocaleString('en-US', {
+		minimumFractionDigits: 0,
+		maximumFractionDigits: maxDecimals
+	});
+}
+
+/** Format the stRWT → RWT exchange rate, e.g. `12.5`. */
+export function formatRate(value: number): string {
+	if (!Number.isFinite(value)) return '0';
+	return value.toLocaleString('en-US', {
+		minimumFractionDigits: 0,
+		maximumFractionDigits: 4
+	});
+}
+
+/**
+ * Whole days remaining until `unlockTs` (Unix ms). Floors to whole days;
+ * returns 0 once the unlock time has passed.
+ */
+export function daysUntil(unlockTs: number): number {
+	const ms = unlockTs - Date.now();
+	if (ms <= 0) return 0;
+	return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+/** True once a cooldown ticket has matured (unlock time reached). */
+export function isMatured(unlockTs: number): boolean {
+	return unlockTs - Date.now() <= 0;
+}
+
+/**
+ * Human countdown label for a cooldown ticket: `12 days left`, `1 day left`,
+ * or `Ready to claim` once matured.
+ */
+export function formatCountdown(unlockTs: number): string {
+	const days = daysUntil(unlockTs);
+	if (days <= 0) return 'Ready to claim';
+	return `${days} day${days === 1 ? '' : 's'} left`;
+}
+
+/** Format a Unix-ms timestamp as a short date, e.g. `Jun 19`. */
+export function formatUnlockDate(unlockTs: number): string {
+	return new Date(unlockTs).toLocaleDateString('en-US', {
+		month: 'short',
+		day: 'numeric'
+	});
+}

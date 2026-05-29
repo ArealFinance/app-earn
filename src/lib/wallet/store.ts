@@ -23,7 +23,12 @@ import {
 	type InjectedWallet,
 	type WalletProviderId
 } from './providers';
-import { mockRwtBalance } from '$lib/earn/mock';
+import {
+	mockRwtBalance,
+	mockStrwtBalance,
+	mockPendingUnstakes
+} from '$lib/earn/mock';
+import type { PendingUnstake } from '$lib/earn/types';
 
 export const RPC_URL = 'https://rpc.areal.finance';
 export const COMMITMENT: Commitment = 'confirmed';
@@ -38,7 +43,12 @@ export interface WalletState {
 	publicKey: PublicKey | null;
 	address: string | null;
 	usdc: number;
+	/** Liquid RWT (mocked — would be an on-chain ATA read post-launch). */
 	rwt: number;
+	/** stRWT staking share token (mocked). */
+	strwt: number;
+	/** Pending unstake tickets in cooldown (mocked). */
+	pendingUnstakes: PendingUnstake[];
 	error: string | null;
 }
 
@@ -50,6 +60,8 @@ const INITIAL: WalletState = {
 	address: null,
 	usdc: 0,
 	rwt: 0,
+	strwt: 0,
+	pendingUnstakes: [],
 	error: null
 };
 
@@ -87,6 +99,8 @@ function createWalletStore() {
 				publicKey: result.publicKey,
 				address: result.publicKey.toBase58(),
 				rwt: mockRwtBalance(result.publicKey),
+				strwt: mockStrwtBalance(result.publicKey),
+				pendingUnstakes: mockPendingUnstakes(result.publicKey),
 				error: null
 			}));
 
@@ -115,13 +129,65 @@ function createWalletStore() {
 		update((s) => (s.connected ? { ...s, usdc } : s));
 	}
 
-	function mockSpendUsdc(amount: number, rwtMinted: number): void {
-		// Local-only simulation for the demo mint flow. No tx is submitted.
+	// ── Mock action helpers ─────────────────────────────────────────────────
+	// Local-only simulations for the demo flows. No tx is ever submitted.
+	// Post-launch these are replaced by real instruction builders + a
+	// balance refresh; the component-facing signatures stay the same.
+
+	/** Buy: spend USDC, receive RWT (mint or DEX — both land as liquid RWT). */
+	function mockBuy(usdcSpent: number, rwtReceived: number): void {
 		update((s) => ({
 			...s,
-			usdc: Math.max(0, s.usdc - amount),
-			rwt: s.rwt + rwtMinted
+			usdc: Math.max(0, s.usdc - usdcSpent),
+			rwt: s.rwt + rwtReceived
 		}));
+	}
+
+	/** Sell: burn RWT on the DEX, receive USDC. */
+	function mockSell(rwtSold: number, usdcReceived: number): void {
+		update((s) => ({
+			...s,
+			rwt: Math.max(0, s.rwt - rwtSold),
+			usdc: s.usdc + usdcReceived
+		}));
+	}
+
+	/** Stake: lock RWT, receive stRWT. */
+	function mockStake(rwtStaked: number, strwtReceived: number): void {
+		update((s) => ({
+			...s,
+			rwt: Math.max(0, s.rwt - rwtStaked),
+			strwt: s.strwt + strwtReceived
+		}));
+	}
+
+	/** Unstake: burn stRWT now, create a cooldown ticket fixed at the rate. */
+	function mockUnstake(strwtBurned: number, rwtOut: number, unlockTs: number): void {
+		update((s) => ({
+			...s,
+			strwt: Math.max(0, s.strwt - strwtBurned),
+			pendingUnstakes: [
+				...s.pendingUnstakes,
+				{
+					id: `local-${Date.now()}`,
+					amountRwt: rwtOut,
+					unlockTs
+				}
+			]
+		}));
+	}
+
+	/** Claim: a matured ticket releases its reserved RWT back to the wallet. */
+	function mockClaimUnstake(ticketId: string): void {
+		update((s) => {
+			const ticket = s.pendingUnstakes.find((t) => t.id === ticketId);
+			if (!ticket) return s;
+			return {
+				...s,
+				rwt: s.rwt + ticket.amountRwt,
+				pendingUnstakes: s.pendingUnstakes.filter((t) => t.id !== ticketId)
+			};
+		});
 	}
 
 	return {
@@ -129,7 +195,11 @@ function createWalletStore() {
 		connect: connectWallet,
 		disconnect: disconnectWallet,
 		refreshBalances,
-		mockSpendUsdc
+		mockBuy,
+		mockSell,
+		mockStake,
+		mockUnstake,
+		mockClaimUnstake
 	};
 }
 
