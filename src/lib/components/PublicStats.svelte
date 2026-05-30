@@ -20,6 +20,14 @@
 	</article>
 
 	<article class="stat">
+		<span class="label">Market</span>
+		<span class="value tabular" title={stats.marketPrice === null ? 'Pool price unavailable' : undefined}>
+			{stats.marketPrice === null ? '—' : formatNav(stats.marketPrice)}
+		</span>
+		<span class="caveat">Meteora DLMM</span>
+	</article>
+
+	<article class="stat">
 		<span class="label">Staking APY</span>
 		<span class="value tabular accent">{formatApr(stats.stakingApy)}</span>
 		<span class="caveat">historical</span>
@@ -34,7 +42,7 @@
 <style>
 	.public-stats {
 		display: grid;
-		grid-template-columns: 1fr;
+		grid-template-columns: 1fr 1fr;
 		gap: var(--space-3);
 		width: 100%;
 	}
@@ -75,7 +83,7 @@
 
 	@media (min-width: 480px) {
 		.public-stats {
-			grid-template-columns: repeat(3, 1fr);
+			grid-template-columns: repeat(4, 1fr);
 		}
 	}
 </style>

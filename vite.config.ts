@@ -13,12 +13,18 @@ import { defineConfig } from 'vite';
 export default defineConfig({
 	plugins: [
 		nodePolyfills({
-			include: ['buffer'],
+			// `@meteora-ag/dlmm` + `@coral-xyz/anchor` reach for Node's `process`
+			// and `Buffer` at module-eval time. The production (Rolldown) build
+			// happens to tree-shake `process` away, but the dev server (esbuild
+			// prebundle) does NOT — it throws `process is not defined` on eval.
+			// Polyfilling `process` (and Buffer) keeps BOTH paths working.
+			include: ['buffer', 'process'],
 			// Buffer: true — inject the Buffer global into every module that
 			// references it. @solana/spl-token uses `Buffer` at module top-level
 			// WITHOUT importing it, so the inject pass (not a runtime shim) is
 			// what guarantees it's defined before the dep evaluates.
-			globals: { Buffer: true, global: true, process: false }
+			// process: true — same story for anchor's `process.env` lookups.
+			globals: { Buffer: true, global: true, process: true }
 		}),
 		sveltekit()
 	],

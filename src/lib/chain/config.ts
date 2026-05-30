@@ -10,13 +10,20 @@
  * RPC is rate-limited but fine for the V1 demo surface.
  */
 
-import { Connection, PublicKey, type Commitment } from '@solana/web3.js';
+import { Connection, PublicKey, type Cluster, type Commitment } from '@solana/web3.js';
 
 // ── RPC ──────────────────────────────────────────────────────────────────────
 
 /** Public devnet RPC. Rate-limited; acceptable for the demo. */
 export const RPC_URL = 'https://api.devnet.solana.com';
 export const COMMITMENT: Commitment = 'confirmed';
+
+/**
+ * Cluster the deployment lives on. The ONLY value that differs devnet↔mainnet
+ * for the Meteora integration — the DLMM program ID is identical on both.
+ * Passed to `DLMM.create(connection, pool, { cluster: CLUSTER })`.
+ */
+export const CLUSTER: Cluster = 'devnet';
 
 /** Shared read-only connection. Reused across reads so we don't churn sockets. */
 export const connection = new Connection(RPC_URL, COMMITMENT);
@@ -82,3 +89,31 @@ export const MIN_STAKE_AMOUNT_UI = 1; // in RWT
 // ── SPL Token program (classic) ────────────────────────────────────────────────
 
 export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+
+// ── Meteora DLMM pool (RWT/USDC) ─────────────────────────────────────────────
+//
+// The earn-RWT / USDC market is a live Meteora DLMM pool. The DLMM program ID
+// is IDENTICAL on devnet and mainnet, so only CLUSTER above changes between
+// environments. Pool data is mirrored in repo data/devnet-addresses.json →
+// .earn.meteora_pool.
+//
+//   tokenX = USDC (6 dec)  → the quote leg
+//   tokenY = RWT  (6 dec)  → the base leg
+//
+// A RWT→USDC sell is therefore a Y→X swap (swapForY = false). The active bin's
+// price (X-per-Y) is USDC per RWT — the market price we surface.
+
+/** DLMM on-chain program (devnet == mainnet). */
+export const DLMM_PROGRAM_ID = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
+/** The live RWT/USDC DLMM pool (LB pair). */
+export const METEORA_POOL = new PublicKey('CVuBA8JfPkqvzNXAebECAR3G7qx2UUCBHoZFbhv7XYQh');
+/** Pool tokenX — USDC, the quote leg. (Same as USDC_MINT; pinned for clarity.) */
+export const METEORA_TOKEN_X = USDC_MINT;
+/** Pool tokenY — earn-RWT, the base leg. (Same as RWT_MINT; pinned for clarity.) */
+export const METEORA_TOKEN_Y = RWT_MINT;
+/** Pool bin step (25 bps) and base fee (30 bps) — for reference / display. */
+export const METEORA_BIN_STEP_BPS = 25;
+export const METEORA_BASE_FEE_BPS = 30;
+
+/** Default sell slippage tolerance (bps) when the caller doesn't specify. */
+export const DEFAULT_SLIPPAGE_BPS = 50; // 0.5%

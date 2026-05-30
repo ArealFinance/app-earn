@@ -13,10 +13,10 @@
 	import { wallet } from '$lib/wallet/store';
 	import {
 		generatePortfolioHistory,
-		PLACEHOLDER_STAKING_APY,
-		MARKET_PRICE
+		PLACEHOLDER_STAKING_APY
 	} from '$lib/earn/mock';
 	import { fetchBookNav, fetchStrwtRate, fetchTvl } from '$lib/chain/reads';
+	import { fetchMarketPrice } from '$lib/chain/meteora';
 	import type { Period, PublicStats as PublicStatsType } from '$lib/earn/types';
 
 	import DemoBadge from '$lib/components/DemoBadge.svelte';
@@ -29,13 +29,15 @@
 	import PositionsList from '$lib/components/PositionsList.svelte';
 	import RatesBar from '$lib/components/RatesBar.svelte';
 	import BuyModal from '$lib/components/BuyModal.svelte';
+	import SellModal from '$lib/components/SellModal.svelte';
 	import StakeModal from '$lib/components/StakeModal.svelte';
 	import UnstakeModal from '$lib/components/UnstakeModal.svelte';
 
 	// ── Protocol-level state ─────────────────────────────────────────────────
-	// Book NAV + stRWT rate + TVL are REAL on-chain reads (devnet). Market price
-	// has no DEX pool yet (null → "—"); APY is a historical placeholder.
-	const marketPrice = MARKET_PRICE; // null until a DEX pool is seeded
+	// Book NAV + stRWT rate + TVL + market price are all REAL on-chain reads
+	// (devnet). Market price comes from the live Meteora DLMM pool's active bin;
+	// `null` only if the pool read fails (renders "—"). APY stays a historical
+	// placeholder (no rate history on-chain yet).
 	const apy = PLACEHOLDER_STAKING_APY;
 
 	// Defaults match the empty on-chain state ($1.00 NAV, 10.0 rate) so the
@@ -43,6 +45,8 @@
 	let bookNav = $state(1);
 	let strwtRate = $state(10);
 	let tvl = $state(0);
+	// Market price starts null ("—") until the pool read resolves.
+	let marketPrice = $state<number | null>(null);
 
 	const stats = $derived<PublicStatsType>({
 		bookNav,
@@ -64,6 +68,14 @@
 			tvl = tvlUsd;
 		} catch {
 			// Keep the empty-state defaults on RPC failure; the UI still renders.
+		}
+
+		// Market price is read separately: the Meteora pool read is heavier than
+		// the contract reads, and a pool failure must not block NAV/rate/TVL.
+		try {
+			marketPrice = await fetchMarketPrice();
+		} catch {
+			marketPrice = null; // renders "—"
 		}
 	});
 
@@ -103,9 +115,14 @@
 	);
 
 	// ── Action capability flags ──────────────────────────────────────────────
-	// Sell is disabled entirely: no RWT/USDC DEX pool is seeded on devnet yet.
-	const canSell = false;
-	const sellDisabledReason = 'Sell opens once the RWT/USDC pool is live';
+	// Sell routes through the live Meteora DLMM pool: enabled once the user holds
+	// RWT and the pool price has been read (a missing market read disables it).
+	const canSell = $derived(rwt > 0 && marketPrice !== null);
+	const sellDisabledReason = $derived(
+		marketPrice === null
+			? 'Market price unavailable — try again shortly'
+			: 'You have no RWT to sell'
+	);
 	const canStake = $derived(rwt > 0);
 	const canUnstake = $derived(strwt > 0);
 
@@ -203,6 +220,7 @@
 </main>
 
 <BuyModal open={activeSheet === 'buy'} {bookNav} onClose={closeSheet} />
+<SellModal open={activeSheet === 'sell'} {marketPrice} {bookNav} onClose={closeSheet} />
 <StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} onClose={closeSheet} />
 <UnstakeModal open={activeSheet === 'unstake'} {strwtRate} onClose={closeSheet} />
 

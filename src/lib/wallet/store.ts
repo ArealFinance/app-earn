@@ -31,6 +31,7 @@ import {
 	buildCompleteUnstake,
 	type SendFn
 } from '$lib/chain/tx';
+import { buildSellRwtTx } from '$lib/chain/meteora';
 import { connection, COMMITMENT } from '$lib/chain/config';
 import type { PendingUnstake } from '$lib/earn/types';
 
@@ -166,6 +167,16 @@ function createWalletStore() {
 		return sig;
 	}
 
+	/**
+	 * Sell RWT to USDC against the live Meteora DLMM pool. `slippageBps` floors
+	 * the on-chain min-out. Returns the signature, then refreshes balances.
+	 */
+	async function sellRwt(rwtAmount: number, slippageBps?: number): Promise<string> {
+		const sig = await buildSellRwtTx(requirePubkey(), rwtAmount, send, slippageBps);
+		await refreshBalances();
+		return sig;
+	}
+
 	/** Stake RWT → stRWT at the current rate. Returns the signature. */
 	async function stakeRwt(rwtAmount: number): Promise<string> {
 		const sig = await buildStake(requirePubkey(), rwtAmount, send);
@@ -194,6 +205,7 @@ function createWalletStore() {
 		refreshBalances,
 		mintRwt,
 		stakeRwt,
+		sellRwt,
 		initiateUnstake,
 		completeUnstake
 	};

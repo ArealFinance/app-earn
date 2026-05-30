@@ -7,8 +7,10 @@
  * is the genuinely-unavailable stuff:
  *
  *   - Staking APY      — no rate history on-chain yet → static "historical (demo)".
- *   - Market price     — no DEX pool seeded → there is no market; "—".
  *   - Portfolio history— no time-series source → a synthetic sparkline series.
+ *
+ * Market price is now REAL: read from the live Meteora DLMM pool's active bin
+ * in `$lib/chain/meteora`. It no longer lives here.
  *
  * The quote helpers below are pure preview math used by the modals; they now
  * take the REAL on-chain NAV / rate as inputs rather than mocked constants.
@@ -23,12 +25,6 @@ import type { PortfolioPoint, StakeQuote, UnstakeQuote } from './types';
  * this is a static placeholder — surfaced to the user as "historical (demo)".
  */
 export const PLACEHOLDER_STAKING_APY = 0.142;
-
-/**
- * Market (DEX) price per RWT. NO DEX pool is seeded on devnet → there is no
- * market. `null` is the honest answer; the UI renders "—".
- */
-export const MARKET_PRICE: number | null = null;
 
 /** Mint protocol commission — 1% on top of the basket body (matches on-chain). */
 export const MINT_FEE_RATE = 0.01;
