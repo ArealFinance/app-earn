@@ -30,32 +30,32 @@ export const connection = new Connection(RPC_URL, COMMITMENT);
 
 // ── Program IDs ────────────────────────────────────────────────────────────────
 
-export const EARN_PROGRAM_ID = new PublicKey('HMBZu87F9zTt4JGbQwaL5V6tFXdLBUyLtgeYTsVh1Rzu');
-export const STAKING_PROGRAM_ID = new PublicKey('3WFdgqHFUnqtZoKQLpj8pQPd3ecitBGG9M2eBmaup8JL');
+export const EARN_PROGRAM_ID = new PublicKey('HGh7TcuqUbTRrFTYBUtsTctAEEmsANWnDxeWcbgqMg8b');
+export const STAKING_PROGRAM_ID = new PublicKey('CmKXHk3u6pDUC6Q11Le6gmhCgENQSFvduisXb7guUGoL');
 
 // ── Mints (all 6 decimals) ─────────────────────────────────────────────────────
 
-export const RWT_MINT = new PublicKey('F6Zjyo3Huk6jrpM41SWBoh3Sj7px1tnt9D8jRKYo96YH');
-export const STRWT_MINT = new PublicKey('J1ZsZD6r8YHTRoAWKrw6LjnWNyPZAAcoXXZL3sL1EhPE');
-export const USDC_MINT = new PublicKey('E4HJu85ZmTrfBuy9kXQpehYnJdaHKY9oaEZNRCZcW35a');
+export const RWT_MINT = new PublicKey('8hJPUC4UNsiyBh5cosTA8RqY9TbBSmnxqkBb2sHJ5qzM');
+export const STRWT_MINT = new PublicKey('EnvY1tsk4SLMPi4uThXCk4dbagtRJ1WdaTFYPKDroNwy');
+export const USDC_MINT = new PublicKey('5rrpFYYVkwGMeTTCox3EE4VBNvkYMCQmxkYJhS9TA4Wx');
 
 export const TOKEN_DECIMALS = 6;
 
 // ── Config PDAs (precomputed; seeds documented for reference) ───────────────────
 
 /** EarnConfig PDA — seed ["earn_config"]. */
-export const EARN_CONFIG_PDA = new PublicKey('7Wq8XC39SRVP8caZDV4WJA6EL88UZScKqwPur6D8PHvi');
+export const EARN_CONFIG_PDA = new PublicKey('H4DBeFKwZsVrhMmMFG7HSMEQckeCYdewuri28kQ3wT4p');
 /** StakingConfig PDA — seed ["staking_config"]. */
-export const STAKING_CONFIG_PDA = new PublicKey('9EvdaRGSYQTRNNuQkEPsUhvx2idfqAKHTqrrHkqH6s6t');
+export const STAKING_CONFIG_PDA = new PublicKey('BWb75dNXbJbteLsmKy58sfHj8nYVa6CqaDzJrWo1mP1R');
 
 // ── Vaults / fee destinations ───────────────────────────────────────────────────
 
 /** USDC basket vault (EarnConfig-PDA-owned) — receives the mint body. */
-export const BASKET_VAULT = new PublicKey('E4qxSTcV5fVpdiH6UvwaexZgEpbMDkXEiWeoD7rcgbSy');
+export const BASKET_VAULT = new PublicKey('B34MHTDgcgraY7zS8ezmDLoVJTA8y3CXUfzpfJ98mEFt');
 /** RWT pool vault (StakingConfig-PDA-owned) — active + reserved RWT. */
-export const POOL_VAULT = new PublicKey('DG6Fr1e23FKZcYpuqKCdJ78dU6ChgzxerPjERgrKBYy3');
+export const POOL_VAULT = new PublicKey('C4VTQqr2f9wUDbXsfF7zawMvxoUvRVDgU3pMZuBYbhFN');
 /** USDC ATA receiving the 1% mint commission. */
-export const DAO_FEE_DESTINATION = new PublicKey('1cJvdDiNNSfy4HMpH79peLRz6Jn6cBYP4asW3AhXBXR');
+export const DAO_FEE_DESTINATION = new PublicKey('7eU9YeiDsN7Riz1HzRRp9cenjRNbJZDZFdDMnPsLBKvd');
 
 // ── PDA seeds (for client-side derivation, e.g. UnstakeTicket) ──────────────────
 
@@ -106,7 +106,7 @@ export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9
 /** DLMM on-chain program (devnet == mainnet). */
 export const DLMM_PROGRAM_ID = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
 /** The live RWT/USDC DLMM pool (LB pair). */
-export const METEORA_POOL = new PublicKey('CVuBA8JfPkqvzNXAebECAR3G7qx2UUCBHoZFbhv7XYQh');
+export const METEORA_POOL = new PublicKey('5i3ipA3AaXCJ7C2U7ZUoxUWQiZDUEU42ihwUGTMHvvkF');
 /** Pool tokenX — USDC, the quote leg. (Same as USDC_MINT; pinned for clarity.) */
 export const METEORA_TOKEN_X = USDC_MINT;
 /** Pool tokenY — earn-RWT, the base leg. (Same as RWT_MINT; pinned for clarity.) */
