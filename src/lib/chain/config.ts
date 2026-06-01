@@ -28,6 +28,27 @@ export const CLUSTER: Cluster = 'devnet';
 /** Shared read-only connection. Reused across reads so we don't churn sockets. */
 export const connection = new Connection(RPC_URL, COMMITMENT);
 
+/**
+ * True when the deployment targets devnet. Used to gate devnet-only affordances
+ * (e.g. the test-USDC faucet) so they never render on mainnet. Reuses the same
+ * CLUSTER constant the Meteora reads key off of.
+ */
+export const IS_DEVNET = CLUSTER === 'devnet';
+
+// ── Faucet (devnet-only, backend-served) ─────────────────────────────────────
+//
+// The faucet is the ONLY backend dependency in the app. Its base URL is injected
+// at build time via `VITE_FAUCET_API_BASE` (see .env.example). When unset the
+// faucet is treated as unavailable and the affordance stays hidden — the rest of
+// the app reads straight from RPC and is unaffected.
+
+/**
+ * Base URL for the faucet API (e.g. `https://api.areal.finance`). Empty string
+ * when unset → callers treat the faucet as unavailable. Never hardcode the base
+ * in components; always source it from here.
+ */
+export const FAUCET_API_BASE: string = import.meta.env.VITE_FAUCET_API_BASE ?? '';
+
 // ── Program IDs ────────────────────────────────────────────────────────────────
 
 export const EARN_PROGRAM_ID = new PublicKey('HGh7TcuqUbTRrFTYBUtsTctAEEmsANWnDxeWcbgqMg8b');

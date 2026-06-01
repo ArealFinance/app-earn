@@ -10,6 +10,7 @@
 	import { CheckCircle2 } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
+	import FaucetButton from './FaucetButton.svelte';
 	import { mintPreview, MINT_FEE_RATE } from '$lib/earn/mock';
 	import { MIN_MINT_AMOUNT_UI } from '$lib/chain/config';
 	import { formatTokenAmount, formatUsd, formatNav } from '$lib/utils/format';
@@ -92,6 +93,10 @@
 			<p class="demo">Confirmed on devnet</p>
 		</div>
 	{:else}
+		{#if usdc <= 0}
+			<FaucetButton disabled={status === 'submitting'} />
+		{/if}
+
 		<AmountInput
 			id="buy-amount"
 			bind:value={amountInput}
