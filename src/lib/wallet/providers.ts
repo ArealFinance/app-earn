@@ -28,9 +28,21 @@ export interface InjectedWallet {
 	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
 	/**
+	 * Sign ONLY — returns the signed transaction without broadcasting. This keeps
+	 * the wallet a pure signer; the store then broadcasts the raw bytes via OUR
+	 * devnet `Connection`. Critical on devnet: the wallet's own
+	 * `signAndSendTransaction` uses the extension's RPC (pinned to mainnet),
+	 * which simulates against mainnet (misleading "insufficient SOL") and
+	 * broadcasts to the wrong cluster. All three target providers expose
+	 * `signTransaction(tx): Promise<Transaction>`.
+	 */
+	signTransaction: (tx: Transaction) => Promise<Transaction>;
+	/**
 	 * Sign + submit a transaction, returning its signature. All three target
 	 * providers expose `signAndSendTransaction`; we normalise the return to the
-	 * base58 signature string.
+	 * base58 signature string. Kept for completeness; the store uses
+	 * `signTransaction` instead so broadcasting goes through our own
+	 * cluster-correct connection.
 	 */
 	signAndSendTransaction: (tx: Transaction) => Promise<string>;
 }
@@ -49,6 +61,7 @@ interface PhantomLike {
 	publicKey?: PublicKey | null;
 	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signTransaction: (tx: Transaction) => Promise<Transaction>;
 	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
 
@@ -57,6 +70,7 @@ interface SolflareLike {
 	publicKey?: PublicKey | null;
 	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<boolean | { publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signTransaction: (tx: Transaction) => Promise<Transaction>;
 	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
 
@@ -65,6 +79,7 @@ interface BackpackLike {
 	publicKey?: PublicKey | null;
 	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
+	signTransaction: (tx: Transaction) => Promise<Transaction>;
 	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
 
@@ -122,6 +137,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 						publicKey: window.solana.publicKey ?? null,
 						connect: (opts) => window.solana!.connect(opts),
 						disconnect: () => window.solana!.disconnect(),
+						signTransaction: (tx) => window.solana!.signTransaction(tx),
 						signAndSendTransaction: async (tx) =>
 							normaliseSignature(await window.solana!.signAndSendTransaction(tx))
 					}
@@ -143,6 +159,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 							return { publicKey: window.solflare!.publicKey };
 						},
 						disconnect: () => window.solflare!.disconnect(),
+						signTransaction: (tx) => window.solflare!.signTransaction(tx),
 						signAndSendTransaction: async (tx) =>
 							normaliseSignature(await window.solflare!.signAndSendTransaction(tx))
 					}
@@ -153,6 +170,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 						publicKey: window.backpack.publicKey ?? null,
 						connect: (opts) => window.backpack!.connect(opts),
 						disconnect: () => window.backpack!.disconnect(),
+						signTransaction: (tx) => window.backpack!.signTransaction(tx),
 						signAndSendTransaction: async (tx) =>
 							normaliseSignature(await window.backpack!.signAndSendTransaction(tx))
 					}

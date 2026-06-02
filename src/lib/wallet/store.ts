@@ -100,10 +100,31 @@ function createWalletStore() {
 	// Adapter held outside reactive state — a non-plain object reference.
 	let adapter: InjectedWallet | null = null;
 
-	/** Bound send function for the connected adapter. Throws if not connected. */
+	/**
+	 * Bound send function for the connected adapter. Throws if not connected.
+	 *
+	 * The wallet is used as a PURE SIGNER (`signTransaction`); we broadcast the
+	 * raw bytes via OUR own devnet `Connection`. This mirrors the main app.
+	 *
+	 * Why not `signAndSendTransaction`? That path uses the extension's OWN RPC,
+	 * which Phantom/Solflare pin to mainnet. On devnet it (a) simulates against
+	 * mainnet -- a misleading "insufficient SOL" warning -- and (b) broadcasts to
+	 * the wrong cluster, so the tx silently disappears. Signing locally then
+	 * sending through our cluster-correct connection lands the tx on devnet.
+	 * (Phantom may still show its mainnet-simulation warning in the approval
+	 * popup -- the user approves anyway; the tx still lands on devnet.)
+	 *
+	 * The tx builders ($lib/chain/tx, $lib/chain/meteora) set a fresh
+	 * `recentBlockhash` + `lastValidBlockHeight` + `feePayer` before calling
+	 * this, so `serialize()` and the confirmation below have what they need.
+	 */
 	const send: SendFn = async (tx: Transaction) => {
 		if (!adapter) throw new Error('Wallet not connected');
-		const signature = await adapter.signAndSendTransaction(tx);
+		const signed = await adapter.signTransaction(tx); // wallet = pure signer
+		const signature = await connection.sendRawTransaction(signed.serialize(), {
+			skipPreflight: false,
+			maxRetries: 3
+		});
 		// Wait for confirmation so a subsequent balance refresh reflects the tx.
 		await connection.confirmTransaction(
 			{
