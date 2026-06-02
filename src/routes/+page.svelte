@@ -219,7 +219,7 @@
 	</footer>
 </main>
 
-<BuyModal open={activeSheet === 'buy'} {bookNav} onClose={closeSheet} />
+<BuyModal open={activeSheet === 'buy'} {marketPrice} {bookNav} onClose={closeSheet} />
 <SellModal open={activeSheet === 'sell'} {marketPrice} {bookNav} onClose={closeSheet} />
 <StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} onClose={closeSheet} />
 <UnstakeModal open={activeSheet === 'unstake'} {strwtRate} onClose={closeSheet} />

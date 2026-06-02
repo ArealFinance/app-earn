@@ -188,4 +188,104 @@ export async function buildSellRwtTx(
 	return send(swapTx);
 }
 
+// ── Buy quote (USDC → RWT) ──────────────────────────────────────────────────────
+
+export interface BuyQuote {
+	/** RWT received (UI units). */
+	rwtOut: number;
+	/** Price impact in basis points. */
+	priceImpactBps: number;
+	/** Swap fee charged, in USDC (UI units). */
+	feeUsdc: number;
+	/** Minimum RWT out after slippage (UI units) — the floor sent on-chain. */
+	minOut: number;
+	/** Effective price (USDC per RWT) implied by the quote. */
+	effectivePrice: number;
+}
+
+/**
+ * Quotes a USDC → RWT buy against the live pool (X → Y, `swapForY = true`).
+ *
+ * Mirror of `quoteSellRwt` with the swap direction flipped: USDC (tokenX) is the
+ * IN leg, RWT (tokenY) is the OUT leg.
+ *
+ * Unlike the sell quote, the DLMM fee is charged on the IN leg (USDC) for an
+ * X→Y swap, so `feeUsdc = fromBaseUnits(quote.fee)` directly — NO multiply by
+ * price (the fee is already denominated in USDC).
+ */
+export async function quoteBuyRwt(
+	usdcAmount: number,
+	slippageBps = DEFAULT_SLIPPAGE_BPS
+): Promise<BuyQuote> {
+	const pool = await getPool();
+	await pool.refetchStates();
+
+	const inAmount = toBaseUnitsBN(usdcAmount);
+	const swapForY = true; // USDC(X) → RWT(Y)
+	const binArrays = await pool.getBinArrayForSwap(swapForY);
+	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
+
+	const rwtOut = fromBaseUnits(quote.outAmount);
+	const minOut = fromBaseUnits(quote.minOutAmount);
+	// priceImpact is a Decimal fraction (e.g. 0.0021 = 0.21%).
+	const priceImpactBps = Math.round(Number(quote.priceImpact.toString()) * 10_000);
+	// Effective price is USDC per RWT (usdcIn / rwtOut) — same orientation as sell.
+	const effectivePrice = rwtOut > 0 ? usdcAmount / rwtOut : 0;
+	// Fee is denominated in the IN token (USDC) for an X→Y swap → use it directly
+	// (this DIFFERS from the sell quote, where the IN token is RWT and the fee is
+	// re-valued in USDC at the effective price).
+	const feeUsdc = fromBaseUnits(quote.fee);
+
+	return { rwtOut, priceImpactBps, feeUsdc, minOut, effectivePrice };
+}
+
+// ── Buy transaction (USDC → RWT) ───────────────────────────────────────────────
+
+/**
+ * Builds the USDC → RWT buy transaction. A FRESH quote is fetched here (not the
+ * UI's display quote) so the on-chain `minOutAmount` floor matches the pool's
+ * current state at submit time. The returned tx is unsigned — `send` (from the
+ * wallet store) finalizes the blockhash, signs, and submits it.
+ *
+ * Out-token ATA: `pool.swap()` calls `getOrCreateATAInstruction` for BOTH the
+ * in (USDC) and out (RWT) tokens and prepends idempotent create-ATA
+ * instructions when missing, so a faucet-only wallet with no RWT ATA is handled
+ * by the SDK — no manual prepend is needed (verified in the installed
+ * @meteora-ag/dlmm v1.9.10 `swap()` source).
+ */
+export async function buildBuyRwtTx(
+	user: PublicKey,
+	usdcAmount: number,
+	send: SendFn,
+	slippageBps = DEFAULT_SLIPPAGE_BPS
+): Promise<string> {
+	const pool = await getPool();
+	await pool.refetchStates();
+
+	const inAmount = toBaseUnitsBN(usdcAmount);
+	const swapForY = true; // USDC(X) → RWT(Y)
+	const binArrays = await pool.getBinArrayForSwap(swapForY);
+	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
+
+	const swapTx: Transaction = await pool.swap({
+		inToken: METEORA_TOKEN_X, // USDC in
+		outToken: METEORA_TOKEN_Y, // RWT out
+		inAmount,
+		minOutAmount: quote.minOutAmount,
+		lbPair: pool.pubkey,
+		user,
+		binArraysPubkey: quote.binArraysPubkey
+	});
+
+	// The SDK builds the instructions but may not pin a fresh blockhash/fee
+	// payer. The wallet store's `send` reads `recentBlockhash` +
+	// `lastValidBlockHeight` to confirm, so guarantee they're set here.
+	const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash(COMMITMENT);
+	swapTx.recentBlockhash = blockhash;
+	swapTx.lastValidBlockHeight = lastValidBlockHeight;
+	swapTx.feePayer = user;
+
+	return send(swapTx);
+}
+
 export { COMMITMENT as METEORA_COMMITMENT };
