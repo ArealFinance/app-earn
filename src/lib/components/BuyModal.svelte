@@ -73,22 +73,44 @@
 				: null
 	);
 
-	// DEX is selectable only when a real quote is present.
-	const dexAvailable = $derived(!!quote);
-	const dexSelected = $derived(selectedPath === 'dex' && dexAvailable);
+	// DEX is a real, "alive" path whenever the market is readable — even at
+	// amount 0. At zero (or before a live quote arrives) it shows an indicative
+	// price from `marketPrice`; once an amount is entered, the live `quote`
+	// refines it. The disabled "No market yet" stub appears ONLY when the pool
+	// is truly unreachable (`marketPrice === null`).
+	const dexMarketAvailable = $derived(marketPrice !== null);
+	// Selectable whenever the market is available (presentation/selectability).
+	// Submittability still requires a real live quote (see `canSubmit`).
+	const dexSelectable = $derived(dexMarketAvailable);
+	const dexSelected = $derived(selectedPath === 'dex' && dexSelectable);
 
-	// RWT received for the active path.
-	const activeRwtOut = $derived(dexSelected ? quote!.rwtOut : mintQuote.rwtOut);
+	// Indicative RWT-out for the DEX card before a live quote exists (amount 0
+	// → 0; otherwise amount / marketPrice). Once `quote` resolves we show it.
+	const dexIndicativeRwtOut = $derived(
+		marketPrice !== null && marketPrice > 0 ? amount / marketPrice : 0
+	);
+	// DEX price to display: live effective price when quoted, else indicative.
+	const dexDisplayPrice = $derived(quote ? quote.effectivePrice : (marketPrice ?? 0));
+	// DEX RWT-out to display: live when quoted, else indicative.
+	const dexDisplayRwtOut = $derived(quote ? quote.rwtOut : dexIndicativeRwtOut);
 
-	// Which path is cheaper (lower USDC-per-RWT price). Used for auto-select + Best badge.
+	// RWT received for the active path (used for the success message at confirm).
+	const activeRwtOut = $derived(dexSelected ? dexDisplayRwtOut : mintQuote.rwtOut);
+
+	// Which path is cheaper (lower USDC-per-RWT price). Used for auto-select +
+	// Best badge. Prefer the live quote's effective price once it exists; before
+	// that, fall back to the indicative `marketPrice` so the badge shows even at
+	// amount 0. Defaults to 'mint' when the DEX market is unavailable.
 	const cheaperPath = $derived.by<Path>(() => {
-		if (!quote) return 'mint';
-		return quote.effectivePrice > 0 && quote.effectivePrice < mintQuote.price ? 'dex' : 'mint';
+		if (!dexMarketAvailable) return 'mint';
+		const dexPrice = quote ? quote.effectivePrice : (marketPrice ?? Infinity);
+		return dexPrice > 0 && dexPrice < mintQuote.price ? 'dex' : 'mint';
 	});
 
 	const canSubmit = $derived.by(() => {
 		if (status !== 'idle') return false;
 		if (dexSelected) {
+			// DEX submit still requires a real live quote at a positive amount.
 			return amount > 0 && !overBalance && !!quote && !quoting;
 		}
 		return amount > 0 && !overBalance && !belowMin;
@@ -132,10 +154,12 @@
 	});
 
 	// Auto-select the cheaper path while the user hasn't explicitly picked one.
-	// Force 'mint' whenever the DEX has no quote (so we never sit on an
-	// unsubmittable DEX selection).
+	// Force 'mint' only when the DEX market is unavailable (so we never sit on a
+	// non-selectable DEX). When the market is available, the cheaper path —
+	// inferred from the indicative price at amount 0, then refined by the live
+	// quote — drives the default.
 	$effect(() => {
-		if (!dexAvailable) {
+		if (!dexSelectable) {
 			selectedPath = 'mint';
 			return;
 		}
@@ -145,7 +169,7 @@
 	});
 
 	function pickPath(path: Path): void {
-		if (path === 'dex' && !dexAvailable) return;
+		if (path === 'dex' && !dexSelectable) return;
 		selectedPath = path;
 		userPicked = true;
 	}
@@ -229,7 +253,7 @@
 			>
 				<span class="path-head">
 					<span class="path-name">Mint</span>
-					{#if cheaperPath === 'mint' && dexAvailable}
+					{#if cheaperPath === 'mint' && dexMarketAvailable}
 						<span class="badge">Best</span>
 					{/if}
 				</span>
@@ -237,7 +261,14 @@
 				<span class="path-price tabular">{formatNav(mintQuote.price)} / RWT</span>
 			</button>
 
-			{#if dexAvailable}
+			{#if dexMarketAvailable}
+				<!--
+					The DEX market is readable, so this is a real, tappable, equally
+					"alive" card — mirroring Mint even at amount 0. It shows the live
+					quote once one exists, otherwise an indicative value derived from
+					`marketPrice` (0 RWT at amount 0). The `~` prefix flags the price
+					as indicative until a live quote refines it.
+				-->
 				<button
 					class="path"
 					class:active={selectedPath === 'dex'}
@@ -251,25 +282,13 @@
 							<span class="badge">Best</span>
 						{/if}
 					</span>
-					<span class="path-out tabular">{formatTokenAmount(quote!.rwtOut)} RWT</span>
-					<span class="path-price tabular">{formatNav(quote!.effectivePrice)} / RWT</span>
+					<span class="path-out tabular">
+						{#if quoting}Quoting…{:else}{formatTokenAmount(dexDisplayRwtOut)} RWT{/if}
+					</span>
+					<span class="path-price tabular">
+						{quote ? '' : '~'}{formatNav(dexDisplayPrice)} / RWT
+					</span>
 				</button>
-			{:else if quoting}
-				<div class="path disabled" aria-hidden="true">
-					<span class="path-head">
-						<span class="path-name">DEX</span>
-					</span>
-					<span class="path-out tabular">Quoting…</span>
-					<span class="path-price tabular">&nbsp;</span>
-				</div>
-			{:else if quoteError === null && marketPrice !== null}
-				<div class="path disabled" title="Enter an amount for a live DEX quote">
-					<span class="path-head">
-						<span class="path-name">DEX</span>
-					</span>
-					<span class="path-out tabular">—</span>
-					<span class="path-price tabular">~{formatNav(marketPrice)} / RWT</span>
-				</div>
 			{:else}
 				<div class="path disabled" title="The RWT/USDC pool is unavailable right now">
 					<span class="path-head">
@@ -281,7 +300,7 @@
 			{/if}
 		</div>
 
-		{#if dexSelected && quote!.priceImpactBps > 100}
+		{#if dexSelected && quote && quote.priceImpactBps > 100}
 			<div class="warn" role="alert">
 				<AlertTriangle size={16} aria-hidden="true" />
 				<span>
@@ -292,26 +311,40 @@
 		{/if}
 
 		<div class="preview">
-			{#if dexSelected}
+			{#if dexSelected && quote}
 				<div class="preview-row">
 					<span>Market price</span>
-					<span class="tabular">{formatNav(quote!.effectivePrice)} / RWT</span>
+					<span class="tabular">{formatNav(quote.effectivePrice)} / RWT</span>
 				</div>
 				<div class="preview-row">
 					<span>Price impact</span>
-					<span class="tabular">{(quote!.priceImpactBps / 100).toFixed(2)}%</span>
+					<span class="tabular">{(quote.priceImpactBps / 100).toFixed(2)}%</span>
 				</div>
 				<div class="preview-row">
 					<span>Pool fee</span>
-					<span class="tabular">−{formatUsd(quote!.feeUsdc)}</span>
+					<span class="tabular">−{formatUsd(quote.feeUsdc)}</span>
 				</div>
 				<div class="preview-row">
 					<span>Min received (slippage {(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}%)</span>
-					<span class="tabular">{formatTokenAmount(quote!.minOut)} RWT</span>
+					<span class="tabular">{formatTokenAmount(quote.minOut)} RWT</span>
 				</div>
 				<div class="preview-row total">
 					<span>You receive</span>
-					<span class="tabular">{formatTokenAmount(quote!.rwtOut)} RWT</span>
+					<span class="tabular">{formatTokenAmount(quote.rwtOut)} RWT</span>
+				</div>
+			{:else if dexSelected}
+				<!-- DEX selected but no live quote yet (amount 0 / quoting): indicative. -->
+				<div class="preview-row">
+					<span>Market price</span>
+					<span class="tabular">~{formatNav(dexDisplayPrice)} / RWT</span>
+				</div>
+				<div class="preview-row">
+					<span>Slippage tolerance</span>
+					<span class="tabular">{(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}%</span>
+				</div>
+				<div class="preview-row total">
+					<span>You receive</span>
+					<span class="tabular">~{formatTokenAmount(dexDisplayRwtOut)} RWT</span>
 				</div>
 			{:else}
 				<div class="preview-row">
