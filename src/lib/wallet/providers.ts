@@ -25,7 +25,7 @@ export interface WalletProviderInfo {
 
 export interface InjectedWallet {
 	publicKey?: PublicKey | null;
-	connect: () => Promise<{ publicKey: PublicKey }>;
+	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
 	/**
 	 * Sign + submit a transaction, returning its signature. All three target
@@ -55,7 +55,7 @@ interface PhantomLike {
 interface SolflareLike {
 	isSolflare?: boolean;
 	publicKey?: PublicKey | null;
-	connect: () => Promise<boolean | { publicKey: PublicKey }>;
+	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<boolean | { publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
 	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
@@ -63,7 +63,7 @@ interface SolflareLike {
 interface BackpackLike {
 	isBackpack?: boolean;
 	publicKey?: PublicKey | null;
-	connect: () => Promise<{ publicKey: PublicKey }>;
+	connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: PublicKey }>;
 	disconnect: () => Promise<void>;
 	signAndSendTransaction: (tx: Transaction) => Promise<SignAndSendResult>;
 }
@@ -120,7 +120,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 			return window.solana
 				? {
 						publicKey: window.solana.publicKey ?? null,
-						connect: () => window.solana!.connect(),
+						connect: (opts) => window.solana!.connect(opts),
 						disconnect: () => window.solana!.disconnect(),
 						signAndSendTransaction: async (tx) =>
 							normaliseSignature(await window.solana!.signAndSendTransaction(tx))
@@ -130,8 +130,8 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 			return window.solflare
 				? {
 						publicKey: window.solflare.publicKey ?? null,
-						connect: async () => {
-							const r = await window.solflare!.connect();
+						connect: async (opts) => {
+							const r = await window.solflare!.connect(opts);
 							// Solflare may return `true` on success rather than the publicKey;
 							// fall back to reading `publicKey` off the injected provider.
 							if (r && typeof r === 'object' && 'publicKey' in r) {
@@ -151,7 +151,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 			return window.backpack
 				? {
 						publicKey: window.backpack.publicKey ?? null,
-						connect: () => window.backpack!.connect(),
+						connect: (opts) => window.backpack!.connect(opts),
 						disconnect: () => window.backpack!.disconnect(),
 						signAndSendTransaction: async (tx) =>
 							normaliseSignature(await window.backpack!.signAndSendTransaction(tx))
@@ -160,13 +160,22 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
 	}
 }
 
-/** Triggers the provider's connect prompt. Throws if not installed or rejected. */
-export async function connect(id: WalletProviderId): Promise<ConnectResult> {
+/**
+ * Triggers the provider's connect prompt. Throws if not installed or rejected.
+ *
+ * Pass `{ onlyIfTrusted: true }` for a silent reconnect — the wallet extension
+ * resolves WITHOUT a prompt if the origin is already in its per-origin trust
+ * list, and rejects otherwise. Used by the store's `silentReconnect` on boot.
+ */
+export async function connect(
+	id: WalletProviderId,
+	opts?: { onlyIfTrusted?: boolean }
+): Promise<ConnectResult> {
 	const adapter = getInjected(id);
 	if (!adapter) {
 		throw new Error(`${id} wallet is not installed`);
 	}
-	const { publicKey } = await adapter.connect();
+	const { publicKey } = await adapter.connect(opts);
 	return { id, publicKey, adapter };
 }
 

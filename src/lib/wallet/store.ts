@@ -67,6 +67,33 @@ const INITIAL: WalletState = {
 	error: null
 };
 
+/*
+ * Persist the provider hint across page reloads so we can do a silent
+ * `connect({ onlyIfTrusted: true })` on next boot — without it, reloading the
+ * page drops the wallet connection and forces the user to click "Connect" again.
+ *
+ * NOTE: this is a HINT, not a credential. It only stores the provider id
+ * (`'phantom'` / `'solflare'` / `'backpack'`) so we know which wallet API to
+ * silently probe; the wallet itself decides whether to grant the connection
+ * (via its own per-origin trust list). No keys, addresses, or secrets here.
+ */
+const PROVIDER_STORAGE_KEY = 'earn:wallet:provider:v1';
+const KNOWN_PROVIDERS: WalletProviderId[] = ['phantom', 'solflare', 'backpack'];
+
+function persistProvider(id: WalletProviderId | null): void {
+	if (typeof localStorage === 'undefined') return;
+	if (id === null) localStorage.removeItem(PROVIDER_STORAGE_KEY);
+	else localStorage.setItem(PROVIDER_STORAGE_KEY, id);
+}
+
+function readPersistedProvider(): WalletProviderId | null {
+	if (typeof localStorage === 'undefined') return null;
+	const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
+	return KNOWN_PROVIDERS.includes(raw as WalletProviderId)
+		? (raw as WalletProviderId)
+		: null;
+}
+
 function createWalletStore() {
 	const { subscribe, set, update } = writable<WalletState>(INITIAL);
 
@@ -127,6 +154,11 @@ function createWalletStore() {
 				error: null
 			}));
 
+			// Persist the provider hint so a page reload can silently reconnect
+			// via `onlyIfTrusted: true` (see `silentReconnect`). Cleared on
+			// explicit disconnect.
+			persistProvider(result.id);
+
 			// Chain reads happen after the UI flips to connected — keeps the
 			// transition snappy; balances arrive a moment later.
 			await loadChainState(result.publicKey);
@@ -142,6 +174,65 @@ function createWalletStore() {
 		await providerDisconnect(adapter);
 		adapter = null;
 		set(INITIAL);
+		// Drop the silent-reconnect hint so a future page load lands on a clean
+		// "Connect" CTA instead of re-trusting the provider the user walked away from.
+		persistProvider(null);
+	}
+
+	/*
+	 * Silent auto-reconnect on boot.
+	 *
+	 * Wallet extensions remember per-origin trust — if the user already approved
+	 * this origin in a previous session, `connect({ onlyIfTrusted: true })`
+	 * resolves WITHOUT prompting. Without this, every page reload resets the
+	 * store to INITIAL and the header drops back to "Connect".
+	 *
+	 * Strictly best-effort: any failure (extension uninstalled, user revoked
+	 * trust, racing with an explicit connect) silently falls back to the
+	 * disconnected state — no error toast — and clears the stale hint so we
+	 * don't keep re-attempting on every reload.
+	 */
+	async function silentReconnect(): Promise<void> {
+		const persisted = readPersistedProvider();
+		if (!persisted) return;
+
+		// Race guard: don't fire if the user already kicked off an explicit
+		// connect (or we're somehow already connected).
+		const current = get({ subscribe });
+		if (current.connected || current.connecting) return;
+
+		try {
+			const result: ConnectResult = await providerConnect(persisted, { onlyIfTrusted: true });
+
+			// Re-check the race guard before committing — an explicit user-initiated
+			// connect may have won while we awaited the provider. If so, it owns the
+			// adapter + state; back off without clobbering it.
+			const after = get({ subscribe });
+			if (after.connected || after.connecting) return;
+
+			// Re-establish the module-level adapter reference so subsequent tx
+			// signing (`send`) works after a reload — same as the explicit path.
+			adapter = result.adapter;
+
+			update((s) => ({
+				...s,
+				connecting: false,
+				connected: true,
+				providerId: result.id,
+				publicKey: result.publicKey,
+				address: result.publicKey.toBase58(),
+				loading: true,
+				error: null
+			}));
+
+			// Populate balances just like the explicit connect path.
+			await loadChainState(result.publicKey);
+		} catch {
+			// Not trusted, extension gone, or a silent race — drop the stale hint
+			// so we stop re-attempting on every reload.
+			adapter = null;
+			persistProvider(null);
+		}
 	}
 
 	/** Refresh all on-chain balances + tickets for the connected wallet. */
@@ -212,6 +303,7 @@ function createWalletStore() {
 		subscribe,
 		connect: connectWallet,
 		disconnect: disconnectWallet,
+		silentReconnect,
 		refreshBalances,
 		mintRwt,
 		stakeRwt,
@@ -223,3 +315,8 @@ function createWalletStore() {
 }
 
 export const wallet = createWalletStore();
+
+// Attempt a silent reconnect once on boot (best-effort; never prompts).
+if (typeof window !== 'undefined') {
+	void wallet.silentReconnect();
+}
