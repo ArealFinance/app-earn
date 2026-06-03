@@ -1,37 +1,57 @@
 <script lang="ts">
 	/**
-	 * Yield accent row: current staking APY + absolute earned ($).
-	 * Always carries the "historical, not a guarantee" caveat.
+	 * Yield accent row: real window APY + absolute earned ($) over the window.
+	 *
+	 * Both are derived from the real `GET /earn/stats` time-series. When the
+	 * history is shorter than the selected window, the value is `null` → we render
+	 * "—" with an "accumulating data…" hint rather than a fabricated number.
 	 */
 	import { formatApr, formatUsdDelta } from '$lib/utils/format';
+	import type { Period } from '$lib/earn/types';
 
 	interface Props {
-		/** Staking APY (fraction, e.g. 0.142). */
-		apy: number;
-		/** Absolute earned to date (USD). */
-		earnedUsd: number;
+		/** Real window APY (fraction), or `null` while history is accumulating. */
+		apy: number | null;
+		/** Earned over the window (USD), or `null` while history is accumulating. */
+		earnedUsd: number | null;
+		/** Selected window — drives the caveat label. */
+		period: Period;
 	}
 
-	let { apy, earnedUsd }: Props = $props();
+	let { apy, earnedUsd, period }: Props = $props();
+
+	const windowLabel = $derived(
+		period === 'day' ? '24h' : period === 'week' ? '7d' : '30d'
+	);
 </script>
 
 <section class="yield" aria-label="Yield">
 	<div class="cell">
 		<span class="label">APY</span>
-		<span class="value tabular">{formatApr(apy)}</span>
+		{#if apy === null}
+			<span class="value tabular muted">—</span>
+			<span class="hint">accumulating data…</span>
+		{:else}
+			<span class="value tabular">{formatApr(apy)}</span>
+		{/if}
 	</div>
 	<div class="cell">
-		<span class="label">Earned</span>
-		<span
-			class="value tabular"
-			class:positive={earnedUsd > 0}
-			class:negative={earnedUsd < 0}
-		>
-			{formatUsdDelta(earnedUsd)}
-		</span>
+		<span class="label">Earned ({windowLabel})</span>
+		{#if earnedUsd === null}
+			<span class="value tabular muted">—</span>
+			<span class="hint">accumulating data…</span>
+		{:else}
+			<span
+				class="value tabular"
+				class:positive={earnedUsd > 0}
+				class:negative={earnedUsd < 0}
+			>
+				{formatUsdDelta(earnedUsd)}
+			</span>
+		{/if}
 	</div>
 </section>
-<p class="caveat">APY is historical and not a guarantee.</p>
+<p class="caveat">APY is annualised from realised rate growth — not a guarantee of future yield.</p>
 
 <style>
 	.yield {
@@ -74,6 +94,15 @@
 
 	.value.negative {
 		color: var(--color-danger);
+	}
+
+	.value.muted {
+		color: var(--color-text-muted);
+	}
+
+	.hint {
+		font-size: var(--text-2xs);
+		color: var(--color-text-muted);
 	}
 
 	.caveat {

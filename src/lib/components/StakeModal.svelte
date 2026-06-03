@@ -1,7 +1,10 @@
 <script lang="ts">
 	/**
 	 * Stake RWT → stRWT at the current rate (stRWT_out = RWT / rate).
-	 * Shows projected (historical) APY. Mock-only.
+	 *
+	 * Shows the REAL window APY from `GET /earn/stats` (passed in) and a projected
+	 * 1-year $ estimate from it. When the APY is still accumulating (`null`), the
+	 * projection rows are hidden — no fabricated estimate.
 	 */
 	import { CheckCircle2 } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
@@ -16,10 +19,12 @@
 		strwtRate: number;
 		/** Book NAV — to show the projected annual $ earnings estimate. */
 		bookNav: number;
+		/** Real window APY (fraction), or `null` while history is accumulating. */
+		apy: number | null;
 		onClose: () => void;
 	}
 
-	let { open, strwtRate, bookNav, onClose }: Props = $props();
+	let { open, strwtRate, bookNav, apy, onClose }: Props = $props();
 
 	type Status = 'idle' | 'submitting' | 'success';
 
@@ -33,7 +38,7 @@
 		return Number.isFinite(n) && n > 0 ? n : 0;
 	});
 
-	const quote = $derived(stakePreview(amount, strwtRate));
+	const quote = $derived(stakePreview(amount, strwtRate, apy));
 	const overBalance = $derived(amount > rwt);
 	const belowMin = $derived(amount > 0 && amount < MIN_STAKE_AMOUNT_UI);
 	const error = $derived(
@@ -47,8 +52,11 @@
 		amount > 0 && !overBalance && !belowMin && status === 'idle'
 	);
 
-	// Projected first-year earnings, in USD, at the historical (placeholder) APY.
-	const projectedEarningsUsd = $derived(amount * bookNav * quote.projectedApy);
+	// Projected first-year earnings, in USD, at the REAL window APY. `null` when
+	// the APY is still accumulating — then we hide the projection entirely.
+	const projectedEarningsUsd = $derived(
+		quote.projectedApy === null ? null : amount * bookNav * quote.projectedApy
+	);
 
 	function reset(): void {
 		amountInput = '';
@@ -102,21 +110,28 @@
 				<span>Rate (stRWT→RWT)</span>
 				<span class="tabular">{formatRate(quote.rateUsed)}</span>
 			</div>
-			<div class="preview-row">
-				<span>Projected APY (demo)</span>
-				<span class="tabular accent">{formatApr(quote.projectedApy)}</span>
-			</div>
-			<div class="preview-row">
-				<span>Est. 1-year earnings</span>
-				<span class="tabular">{formatUsd(projectedEarningsUsd)}</span>
-			</div>
+			{#if quote.projectedApy !== null && projectedEarningsUsd !== null}
+				<div class="preview-row">
+					<span>Window APY</span>
+					<span class="tabular accent">{formatApr(quote.projectedApy)}</span>
+				</div>
+				<div class="preview-row">
+					<span>Est. 1-year earnings</span>
+					<span class="tabular">{formatUsd(projectedEarningsUsd)}</span>
+				</div>
+			{:else}
+				<div class="preview-row">
+					<span>Window APY</span>
+					<span class="tabular muted">accumulating data…</span>
+				</div>
+			{/if}
 			<div class="preview-row total">
 				<span>You receive</span>
 				<span class="tabular">{formatTokenAmount(quote.strwtOut)} stRWT</span>
 			</div>
 		</div>
 
-		<p class="caveat">APY is a historical placeholder, not a guarantee.</p>
+		<p class="caveat">APY is annualised from realised rate growth — not a guarantee.</p>
 
 		{#if txError}
 			<p class="tx-error" role="alert">{txError}</p>
@@ -161,6 +176,10 @@
 	.preview-row .accent {
 		color: var(--color-success);
 		font-weight: var(--font-weight-semibold);
+	}
+
+	.preview-row .muted {
+		color: var(--color-text-muted);
 	}
 
 	.preview-row.total {

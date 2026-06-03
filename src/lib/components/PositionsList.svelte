@@ -27,8 +27,8 @@
 		bookNav: number;
 		/** stRWT → RWT rate — to value stRWT in RWT before USD. */
 		strwtRate: number;
-		/** Staking APY (fraction) shown on the stRWT row. */
-		apy: number;
+		/** Real staking APY (fraction) for the stRWT row, or `null` while accumulating. */
+		apy: number | null;
 		/** Buy CTA for the empty state. */
 		onBuy: () => void;
 		/** Claim a matured unstake ticket. */
@@ -73,7 +73,11 @@
 					<span class="icon" aria-hidden="true"><Lock size={16} /></span>
 					<span class="name">
 						stRWT
-						<span class="apy-tag tabular">APY {formatApr(apy)}</span>
+						{#if apy !== null}
+							<span class="apy-tag tabular">APY {formatApr(apy)}</span>
+						{:else}
+							<span class="apy-tag tabular muted">APY accumulating…</span>
+						{/if}
 					</span>
 					<span class="amounts">
 						<span class="amount tabular">{formatTokenAmount(strwt)}</span>
@@ -174,6 +178,11 @@
 		font-size: var(--text-2xs);
 		font-weight: var(--font-weight-semibold);
 		color: var(--color-success);
+	}
+
+	.apy-tag.muted {
+		color: var(--color-text-muted);
+		font-weight: var(--font-weight-medium);
 	}
 
 	.meta {

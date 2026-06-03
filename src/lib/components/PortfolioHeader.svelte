@@ -12,22 +12,25 @@
 	import AnimatedNumber from './AnimatedNumber.svelte';
 	import Sparkline from './Sparkline.svelte';
 	import { formatPctDelta } from '$lib/utils/format';
-	import type { Period, PortfolioPoint } from '$lib/earn/types';
+	import type { Period } from '$lib/earn/types';
 
 	interface Props {
 		/** Current total portfolio value (USD). */
 		totalValue: number;
-		/** Fractional change over the selected period (e.g. 0.083). */
-		changePct: number;
+		/**
+		 * Fractional change over the selected period (e.g. 0.083), or `null` when
+		 * the real series doesn't span the window yet → the delta is neutralised.
+		 */
+		changePct: number | null;
 		/** Selected period. */
 		period: Period;
-		/** History points for the sparkline (already scoped to the period). */
-		history: PortfolioPoint[];
+		/** Sparkline series (already scoped to the period), built from real stats. */
+		values: number[];
 		/** Called when the user picks a different period. */
 		onPeriodChange: (period: Period) => void;
 	}
 
-	let { totalValue, changePct, period, history, onPeriodChange }: Props = $props();
+	let { totalValue, changePct, period, values, onPeriodChange }: Props = $props();
 
 	const PERIODS: Array<{ id: Period; label: string }> = [
 		{ id: 'day', label: '1D' },
@@ -35,11 +38,13 @@
 		{ id: 'month', label: '30D' }
 	];
 
-	const isUp = $derived(changePct >= 0);
+	// Delta direction only matters when we actually have a value; `null` renders
+	// a neutral "—" with no up/down tint.
+	const hasDelta = $derived(changePct !== null);
+	const isUp = $derived((changePct ?? 0) >= 0);
 	const periodLabel = $derived(
 		period === 'day' ? '24h' : period === 'week' ? '7d' : '30d'
 	);
-	const values = $derived(history.map((p) => p.value));
 </script>
 
 <section class="portfolio" aria-label="Portfolio value">
@@ -54,15 +59,22 @@
 	</div>
 
 	<div class="change-row">
-		<span class="delta" class:up={isUp} class:down={!isUp}>
-			{#if isUp}
-				<TrendingUp size={15} aria-hidden="true" />
-			{:else}
-				<TrendingDown size={15} aria-hidden="true" />
-			{/if}
-			<span class="tabular">{formatPctDelta(changePct, 1)}</span>
-			<span class="period-tag">({periodLabel})</span>
-		</span>
+		{#if hasDelta && changePct !== null}
+			<span class="delta" class:up={isUp} class:down={!isUp}>
+				{#if isUp}
+					<TrendingUp size={15} aria-hidden="true" />
+				{:else}
+					<TrendingDown size={15} aria-hidden="true" />
+				{/if}
+				<span class="tabular">{formatPctDelta(changePct, 1)}</span>
+				<span class="period-tag">({periodLabel})</span>
+			</span>
+		{:else}
+			<span class="delta neutral">
+				<span class="tabular">—</span>
+				<span class="period-tag">accumulating data…</span>
+			</span>
+		{/if}
 	</div>
 
 	{#if values.length >= 2}
@@ -137,6 +149,10 @@
 
 	.delta.down {
 		color: var(--color-danger);
+	}
+
+	.delta.neutral {
+		color: var(--color-text-muted);
 	}
 
 	.period-tag {

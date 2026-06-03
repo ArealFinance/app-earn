@@ -29,8 +29,13 @@
 
 	<article class="stat">
 		<span class="label">Staking APY</span>
-		<span class="value tabular accent">{formatApr(stats.stakingApy)}</span>
-		<span class="caveat">historical</span>
+		{#if stats.stakingApy === null}
+			<span class="value tabular muted" title="Not enough rate history yet">—</span>
+			<span class="caveat">accumulating data…</span>
+		{:else}
+			<span class="value tabular">{formatApr(stats.stakingApy)}</span>
+			<span class="caveat">annualised, realised</span>
+		{/if}
 	</article>
 
 	<article class="stat">
@@ -72,8 +77,8 @@
 		color: var(--color-text);
 	}
 
-	.value.accent {
-		color: var(--color-success);
+	.value.muted {
+		color: var(--color-text-muted);
 	}
 
 	.caveat {

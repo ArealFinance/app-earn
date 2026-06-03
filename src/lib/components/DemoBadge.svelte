@@ -2,9 +2,11 @@
 	/**
 	 * Persistent "Devnet" badge.
 	 *
-	 * NAV, the stRWT rate, balances and transactions are REAL devnet state.
-	 * The badge stays visible so users know this is not mainnet (and that a
-	 * few derived figures — APY history, market price — are still placeholders).
+	 * Everything is REAL devnet state now: NAV, the stRWT rate, market price
+	 * (live Meteora pool), balances, transactions, and APY / earned (from the
+	 * earn-stats time-series). The badge stays visible only to mark this as
+	 * devnet, not mainnet — APY/earned simply show "accumulating data…" until
+	 * enough snapshot history exists.
 	 *
 	 * Sits in the top-right corner. When the wallet pill is also visible
 	 * (connected state), the pill renders to the right of this badge.
@@ -13,7 +15,7 @@
 
 <span
 	class="demo-badge"
-	title="Live Solana devnet. NAV, rate, balances and transactions are real on-chain state. APY history and market price are placeholders until a DEX pool is seeded."
+	title="Live Solana devnet. NAV, rate, market price, balances, transactions and APY are all real on-chain state. APY/earned show 'accumulating data…' until enough snapshot history exists."
 	aria-label="Devnet — live on-chain state, not mainnet"
 >
 	<span class="dot" aria-hidden="true"></span>

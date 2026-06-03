@@ -1,88 +1,28 @@
 /**
- * Placeholder data layer — ONLY for figures not yet available on-chain.
+ * Quote-preview math for the modals — pure functions over REAL inputs.
  *
- * Phase 4.2d wired the earn + staking contracts to live devnet. Everything
- * backed by a chain read now lives in `$lib/chain/` (NAV, stRWT rate, balances,
- * tickets, TVL) and every action submits a real transaction. What remains here
- * is the genuinely-unavailable stuff:
+ * Phase 4.2d wired the earn + staking contracts to live devnet; the later
+ * stats pass wired APY / earned / portfolio-history to the real `GET /earn/stats`
+ * time-series (`$lib/chain/stats` + `$lib/earn/derive`). Nothing in here is a
+ * placeholder number any more:
  *
- *   - Staking APY      — no rate history on-chain yet → static "historical (demo)".
- *   - Portfolio history— no time-series source → a synthetic sparkline series.
+ *   - NAV, stRWT rate, balances, tickets, TVL → `$lib/chain/reads`
+ *   - Market price                            → `$lib/chain/meteora` (Meteora DLMM)
+ *   - APY / earned / portfolio history        → `$lib/chain/stats` + `$lib/earn/derive`
  *
- * Market price is now REAL: read from the live Meteora DLMM pool's active bin
- * in `$lib/chain/meteora`. It no longer lives here.
- *
- * The quote helpers below are pure preview math used by the modals; they now
- * take the REAL on-chain NAV / rate as inputs rather than mocked constants.
+ * What's left here is the small bit of pure preview arithmetic the buy/stake/
+ * unstake sheets run over those REAL on-chain inputs.
  */
 
-import type { PortfolioPoint, StakeQuote, UnstakeQuote } from './types';
+import type { StakeQuote, UnstakeQuote } from './types';
 
-// ── Placeholder constants (NOT on-chain) ─────────────────────────────────────
-
-/**
- * Historical staking APY (fraction). There is no rate history on-chain yet, so
- * this is a static placeholder — surfaced to the user as "historical (demo)".
- */
-export const PLACEHOLDER_STAKING_APY = 0.142;
+// ── On-chain-matching constants (NOT placeholders) ───────────────────────────
 
 /** Mint protocol commission — 1% on top of the basket body (matches on-chain). */
 export const MINT_FEE_RATE = 0.01;
 
 /** Unstake cooldown — 21 days, in milliseconds (matches on-chain COOLDOWN_SECONDS). */
 export const COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
-
-// ── Portfolio history (sparkline) — synthetic, no on-chain source ────────────
-
-/**
- * Generates a gentle upward-sloping portfolio-value series for the sparkline.
- * Ends at `endValue` (the user's current total) and trends up to it. There is
- * no on-chain history source, so this is clearly a synthetic/demo curve.
- *
- * @param days     number of points (default 30)
- * @param endValue final/current total portfolio value (USD)
- * @param growth   fractional gain across the window (default 0.083 = +8.3%)
- */
-export function generatePortfolioHistory(
-	days = 30,
-	endValue = 12_480.5,
-	growth = 0.083
-): PortfolioPoint[] {
-	const points: PortfolioPoint[] = [];
-	if (endValue <= 0 || days < 2) {
-		// Flat series for empty/edge cases so the sparkline still renders a line.
-		const now = Date.now();
-		const dayMs = 24 * 60 * 60 * 1000;
-		for (let i = 0; i < Math.max(2, days); i += 1) {
-			points.push({
-				t: new Date(now - (days - 1 - i) * dayMs).toISOString(),
-				value: endValue
-			});
-		}
-		return points;
-	}
-
-	const start = endValue / (1 + growth);
-	const now = Date.now();
-	const dayMs = 24 * 60 * 60 * 1000;
-	const span = endValue - start;
-
-	for (let i = 0; i < days; i += 1) {
-		const t = new Date(now - (days - 1 - i) * dayMs);
-		const progress = i / (days - 1);
-		// Deterministic wobble (~±0.4% of span) so the curve isn't a ruler.
-		const wobble = (Math.sin(i * 1.7) * 0.4 + Math.cos(i * 0.7) * 0.2) * (span * 0.05);
-		points.push({ t: t.toISOString(), value: start + span * progress + wobble });
-	}
-
-	// Pin the final point exactly to the current value.
-	points[points.length - 1] = {
-		t: new Date(now).toISOString(),
-		value: endValue
-	};
-
-	return points;
-}
 
 // ── Quote preview helpers (pure math over REAL on-chain inputs) ───────────────
 
@@ -105,9 +45,10 @@ export function mintPreview(usdc: number, bookNav: number): {
 
 /**
  * Stake preview — RWT → stRWT at the REAL on-chain rate (stRWT_out = RWT / rate).
- * `apy` is the historical placeholder.
+ * `apy` is the REAL window APY from `GET /earn/stats`, or `null` when history is
+ * still accumulating (then there's no honest projection to show).
  */
-export function stakePreview(rwt: number, rate: number, apy = PLACEHOLDER_STAKING_APY): StakeQuote {
+export function stakePreview(rwt: number, rate: number, apy: number | null): StakeQuote {
 	const amount = Math.max(0, Number.isFinite(rwt) ? rwt : 0);
 	const strwtOut = rate > 0 ? amount / rate : 0;
 	return { strwtOut, rateUsed: rate, projectedApy: apy };

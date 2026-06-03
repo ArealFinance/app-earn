@@ -4,19 +4,25 @@
 	 *
 	 * State A (not connected): hero + connect CTA + public stats.
 	 * State B (connected):     portfolio header, yield, 4-action bar, positions,
-	 *                          rates. Balances are deterministic mocks (some 0).
+	 *                          rates.
 	 *
-	 * All numbers come from `$lib/earn/mock` — the single swap-out point for when
-	 * the earn + staking contracts deploy (Phase 4). DemoBadge stays visible.
+	 * Every number is REAL: NAV / rate / TVL / balances / tickets from on-chain
+	 * reads, market price from the live Meteora pool, and APY / EARNED / portfolio
+	 * history from `GET /earn/stats` (`$lib/chain/stats`). When the stats endpoint
+	 * has no history yet (fresh devnet) or is unreachable, the APY/earned/delta
+	 * surfaces degrade to "—" + "accumulating data…" — never a fabricated value.
 	 */
 	import { onMount } from 'svelte';
 	import { wallet } from '$lib/wallet/store';
-	import {
-		generatePortfolioHistory,
-		PLACEHOLDER_STAKING_APY
-	} from '$lib/earn/mock';
 	import { fetchBookNav, fetchStrwtRate, fetchTvl } from '$lib/chain/reads';
 	import { fetchMarketPrice } from '$lib/chain/meteora';
+	import { fetchEarnStats, type EarnStats } from '$lib/chain/stats';
+	import {
+		buildSeries,
+		changePctOverWindow,
+		earnedOverWindow,
+		headlineApy
+	} from '$lib/earn/derive';
 	import type { Period, PublicStats as PublicStatsType } from '$lib/earn/types';
 
 	import DemoBadge from '$lib/components/DemoBadge.svelte';
@@ -36,9 +42,7 @@
 	// ── Protocol-level state ─────────────────────────────────────────────────
 	// Book NAV + stRWT rate + TVL + market price are all REAL on-chain reads
 	// (devnet). Market price comes from the live Meteora DLMM pool's active bin;
-	// `null` only if the pool read fails (renders "—"). APY stays a historical
-	// placeholder (no rate history on-chain yet).
-	const apy = PLACEHOLDER_STAKING_APY;
+	// `null` only if the pool read fails (renders "—").
 
 	// Defaults match the empty on-chain state ($1.00 NAV, 10.0 rate) so the
 	// first paint is correct even before the async read resolves.
@@ -47,6 +51,15 @@
 	let tvl = $state(0);
 	// Market price starts null ("—") until the pool read resolves.
 	let marketPrice = $state<number | null>(null);
+
+	// Real earn-stats (APY + time-series) from `GET /earn/stats`. `null` until
+	// the fetch resolves AND only stays null when the endpoint has no history /
+	// is unreachable → APY/earned/delta show "accumulating data…".
+	let earnStats = $state<EarnStats | null>(null);
+
+	// Headline APY (fraction) — prefer the month window, fall back week→day. When
+	// every window is still accumulating, `null` → "—" + accumulating hint.
+	const apy = $derived<number | null>(earnStats ? headlineApy(earnStats.apy) : null);
 
 	const stats = $derived<PublicStatsType>({
 		bookNav,
@@ -77,6 +90,11 @@
 		} catch {
 			marketPrice = null; // renders "—"
 		}
+
+		// Earn-stats is its own backend call; `fetchEarnStats` already swallows
+		// every failure into `null`, so no try/catch needed. A `null` here is the
+		// "accumulating data…" state, not an error.
+		earnStats = await fetchEarnStats();
 	});
 
 	// ── Wallet-derived state ─────────────────────────────────────────────────
@@ -93,25 +111,41 @@
 	const totalRwtEquivalent = $derived(rwt + strwt * strwtRate + pendingRwt);
 	const totalValue = $derived(totalRwtEquivalent * bookNav);
 
-	// ── Period toggle + sparkline history ────────────────────────────────────
+	// ── Period toggle + real time-series derivations ─────────────────────────
 	let period = $state<Period>('month');
 
-	const periodDays: Record<Period, number> = { day: 1, week: 7, month: 30 };
-	const periodGrowth: Record<Period, number> = { day: 0.004, week: 0.021, month: 0.083 };
+	// Current holdings (liquid RWT + stRWT) used to value the real series.
+	const holdings = $derived({ rwt, strwt });
 
-	// History is keyed to the current total and the selected window's growth.
-	const history = $derived(
-		generatePortfolioHistory(
-			Math.max(2, periodDays[period] + 1),
-			totalValue,
-			periodGrowth[period]
-		)
+	// APY for the SELECTED window (period-specific). `null` while that window is
+	// still accumulating → YieldStats renders "—" + the accumulating hint.
+	const periodApy = $derived<number | null>(
+		earnStats ? earnStats.apy[period] : null
 	);
-	const changePct = $derived(periodGrowth[period]);
 
-	// Earned ($) over the window — value gained vs. the window's start.
-	const earnedUsd = $derived(
-		totalValue > 0 ? totalValue - totalValue / (1 + changePct) : 0
+	// Sparkline series, built from the REAL stats time-series sliced to the
+	// window. With holdings → the user's portfolio-value curve; without holdings
+	// (or not connected) → the protocol NAV curve so the chart still shows the
+	// vault's real trajectory. Empty array when there's no history at all.
+	const seriesValues = $derived(
+		earnStats ? buildSeries(holdings, earnStats.history, period) : []
+	);
+
+	// EARNED ($) over the window on CURRENT holdings, computed from the real
+	// series (rate + NAV movement). `null` when history is shorter than the
+	// window → "—" + accumulating.
+	const earnedUsd = $derived<number | null>(
+		earnStats
+			? earnedOverWindow(holdings, earnStats.history, period, strwtRate, bookNav)
+			: null
+	);
+
+	// The "+X% (window)" delta, derived from the real value series. `null` when
+	// there's no window anchor (or the user holds nothing) → neutral delta.
+	const changePct = $derived<number | null>(
+		earnStats
+			? changePctOverWindow(holdings, earnStats.history, period, strwtRate, bookNav)
+			: null
 	);
 
 	// ── Action capability flags ──────────────────────────────────────────────
@@ -188,11 +222,11 @@
 				{totalValue}
 				{changePct}
 				{period}
-				{history}
+				values={seriesValues}
 				onPeriodChange={(p) => (period = p)}
 			/>
 
-			<YieldStats {apy} {earnedUsd} />
+			<YieldStats apy={periodApy} {earnedUsd} {period} />
 
 			<ActionBar {canSell} {sellDisabledReason} {canStake} {canUnstake} onAction={openSheet} />
 
@@ -202,7 +236,7 @@
 				{pendingUnstakes}
 				{bookNav}
 				{strwtRate}
-				{apy}
+				apy={periodApy}
 				onBuy={() => openSheet('buy')}
 				onClaim={handleClaim}
 			/>
@@ -221,7 +255,7 @@
 
 <BuyModal open={activeSheet === 'buy'} {marketPrice} {bookNav} onClose={closeSheet} />
 <SellModal open={activeSheet === 'sell'} {marketPrice} {bookNav} onClose={closeSheet} />
-<StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} onClose={closeSheet} />
+<StakeModal open={activeSheet === 'stake'} {strwtRate} {bookNav} apy={periodApy} onClose={closeSheet} />
 <UnstakeModal open={activeSheet === 'unstake'} {strwtRate} onClose={closeSheet} />
 
 <style>

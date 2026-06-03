@@ -1,19 +1,11 @@
 /**
  * Shared types for the earn product layer.
  *
- * When the real contracts are wired in (Phase 4), only the *values* produced by
- * `mock.ts` should change — these interfaces stay stable. `mock.ts` is the single
- * swap-out point: every `MOCK_*` constant / `mock*()` helper becomes an on-chain
- * (or backend) read returning the same shape.
+ * Real values now flow from `$lib/chain/` (on-chain reads + `GET /earn/stats`);
+ * `mock.ts` keeps only the pure preview math the modals run over those inputs.
+ * The portfolio sparkline is built as a plain `number[]` from the real stats
+ * time-series (see `$lib/earn/derive`).
  */
-
-/** A single point on the portfolio-value sparkline. */
-export interface PortfolioPoint {
-	/** ISO timestamp for the data point. */
-	t: string;
-	/** Total portfolio value (USD) at that moment. */
-	value: number;
-}
 
 /** Period selector for the portfolio growth toggle. */
 export type Period = 'day' | 'week' | 'month';
@@ -26,8 +18,11 @@ export interface PublicStats {
 	marketPrice: number | null;
 	/** Current stRWT → RWT exchange rate — real on-chain read. */
 	strwtRate: number;
-	/** Historical staking APY (fraction). Placeholder until rate history exists. */
-	stakingApy: number;
+	/**
+	 * Real staking APY (fraction) from `GET /earn/stats`, or `null` while the
+	 * rate history is still shorter than the window ("accumulating data…").
+	 */
+	stakingApy: number | null;
 	/** Total value locked across the basket (USD) — real on-chain read. */
 	tvl: number;
 }
@@ -64,8 +59,11 @@ export interface StakeQuote {
 	strwtOut: number;
 	/** Rate used (stRWT → RWT). */
 	rateUsed: number;
-	/** Projected APY (fraction) — historical, not a guarantee. */
-	projectedApy: number;
+	/**
+	 * Real window APY (fraction) from `GET /earn/stats`, or `null` while history
+	 * is still accumulating — in which case no projection is shown.
+	 */
+	projectedApy: number | null;
 }
 
 /** Unstake quote — stRWT → RWT with a 21-day cooldown. */
