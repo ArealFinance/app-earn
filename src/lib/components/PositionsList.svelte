@@ -212,13 +212,14 @@
 		font-size: var(--text-xs);
 		font-weight: var(--font-weight-semibold);
 		color: var(--color-on-success);
-		background: var(--color-success);
+		background-color: var(--color-success);
 		border-radius: var(--radius-sm);
 		white-space: nowrap;
+		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.claim-btn:hover {
-		filter: brightness(1.05);
+		background-color: var(--color-green-700);
 	}
 
 	.empty {
@@ -248,17 +249,17 @@
 		padding: 0 var(--space-6);
 		font-size: var(--text-base);
 		font-weight: var(--font-weight-semibold);
-		color: var(--color-text);
-		background: linear-gradient(
-			135deg,
-			var(--color-primary-gradient-from),
-			var(--color-primary-gradient-to)
-		);
+		color: var(--color-white-900);
+		background-color: var(--color-purple-400);
 		border-radius: var(--radius-button);
-		box-shadow: var(--glow-purple);
+		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.btn-primary:hover {
-		filter: brightness(1.06);
+		background-color: var(--color-purple-500);
+	}
+
+	.btn-primary:active {
+		background-color: var(--color-purple-700);
 	}
 </style>

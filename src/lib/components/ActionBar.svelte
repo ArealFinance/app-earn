@@ -78,6 +78,7 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		transition: border-color var(--motion-fast) var(--ease-out),
+			background-color var(--motion-fast) var(--ease-out),
 			transform var(--motion-fast) var(--ease-out);
 	}
 
@@ -90,17 +91,16 @@
 	}
 
 	.action.primary {
-		color: var(--color-text);
-		background: linear-gradient(
-			135deg,
-			var(--color-primary-gradient-from),
-			var(--color-primary-gradient-to)
-		);
+		color: var(--color-white-900);
+		background-color: var(--color-purple-400);
 		border-color: transparent;
-		box-shadow: var(--glow-purple);
 	}
 
-	.action.primary:hover {
-		filter: brightness(1.06);
+	.action.primary:hover:not(:disabled) {
+		background-color: var(--color-purple-500);
+	}
+
+	.action.primary:active:not(:disabled) {
+		background-color: var(--color-purple-700);
 	}
 </style>

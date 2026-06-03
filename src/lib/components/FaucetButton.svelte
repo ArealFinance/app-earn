@@ -104,16 +104,17 @@
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-tight);
 		color: var(--color-text);
-		background: var(--color-surface-inset);
+		background-color: var(--color-surface-inset);
 		border: 1px dashed var(--color-primary);
 		border-radius: var(--radius-button);
 		transition:
-			filter var(--motion-fast) var(--ease-out),
+			background-color var(--motion-fast) var(--ease-out),
 			border-color var(--motion-fast) var(--ease-out);
 	}
 
 	.faucet-btn:hover:not(:disabled) {
-		filter: brightness(1.06);
+		background-color: var(--color-surface);
+		border-color: var(--color-purple-500);
 	}
 
 	.faucet-btn:disabled {

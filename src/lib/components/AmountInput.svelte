@@ -155,12 +155,13 @@
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-wide);
 		color: var(--color-primary);
-		background: var(--color-info-tint);
+		background-color: var(--color-info-tint);
 		border-radius: var(--radius-xs);
+		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.max-btn:hover:not(:disabled) {
-		filter: brightness(1.1);
+		background-color: var(--color-surface-inset);
 	}
 
 	.balance {

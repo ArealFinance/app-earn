@@ -126,22 +126,19 @@
 		font-size: var(--text-base);
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-tight);
-		color: var(--color-text);
-		background: linear-gradient(
-			135deg,
-			var(--color-primary-gradient-from),
-			var(--color-primary-gradient-to)
-		);
+		color: var(--color-white-900);
+		background-color: var(--color-purple-400);
 		border-radius: var(--radius-button);
-		box-shadow: var(--glow-purple);
-		transition: transform var(--motion-fast) var(--ease-out), filter var(--motion-fast) var(--ease-out);
+		transition: transform var(--motion-fast) var(--ease-out),
+			background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.cta:hover {
-		filter: brightness(1.06);
+		background-color: var(--color-purple-500);
 	}
 
 	.cta:active {
+		background-color: var(--color-purple-700);
 		transform: scale(0.99);
 	}
 

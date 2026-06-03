@@ -529,21 +529,20 @@
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-tight);
 		border-radius: var(--radius-button);
-		transition: filter var(--motion-fast) var(--ease-out);
+		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.btn.primary {
-		color: var(--color-text);
-		background: linear-gradient(
-			135deg,
-			var(--color-primary-gradient-from),
-			var(--color-primary-gradient-to)
-		);
-		box-shadow: var(--glow-purple);
+		color: var(--color-white-900);
+		background-color: var(--color-purple-400);
 	}
 
 	.btn.primary:hover:not(:disabled) {
-		filter: brightness(1.06);
+		background-color: var(--color-purple-500);
+	}
+
+	.btn.primary:active:not(:disabled) {
+		background-color: var(--color-purple-700);
 	}
 
 	.btn.ghost {
