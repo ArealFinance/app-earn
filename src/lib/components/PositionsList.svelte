@@ -9,8 +9,9 @@
 	 * When the user holds nothing → an empty-state nudge.
 	 */
 	import { Coins, Hourglass } from 'lucide-svelte';
-	import rwtLogo from '$lib/assets/tokens/rwt.png';
-	import strwtLogo from '$lib/assets/tokens/strwt.png';
+	// Token logos live in static/ and are referenced by plain path — NOT a JS
+	// `import` (which Vite compiles to `new URL(..., import.meta.url)`, and the
+	// node-polyfills shim shadows the global URL → "URL is not a constructor").
 	import {
 		formatApr,
 		formatCountdown,
@@ -61,7 +62,7 @@
 		<ul class="list">
 			{#if rwt > 0}
 				<li class="row">
-					<img class="token-logo" src={rwtLogo} alt="RWT" width="32" height="32" />
+					<img class="token-logo" src="/tokens/rwt.png" alt="RWT" width="32" height="32" />
 					<span class="name">RWT</span>
 					<span class="amounts">
 						<span class="amount tabular">{formatTokenAmount(rwt)}</span>
@@ -72,7 +73,7 @@
 
 			{#if strwt > 0}
 				<li class="row">
-					<img class="token-logo" src={strwtLogo} alt="stRWT" width="32" height="32" />
+					<img class="token-logo" src="/tokens/strwt.png" alt="stRWT" width="32" height="32" />
 					<span class="name">
 						stRWT
 						{#if apy !== null}
