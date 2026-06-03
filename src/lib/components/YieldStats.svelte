@@ -22,7 +22,11 @@
 	</div>
 	<div class="cell">
 		<span class="label">Earned</span>
-		<span class="value tabular" class:positive={earnedUsd >= 0}>
+		<span
+			class="value tabular"
+			class:positive={earnedUsd > 0}
+			class:negative={earnedUsd < 0}
+		>
 			{formatUsdDelta(earnedUsd)}
 		</span>
 	</div>
@@ -42,7 +46,7 @@
 		flex-direction: column;
 		gap: var(--space-1);
 		padding: var(--space-4);
-		background: var(--color-success-bg-soft);
+		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 	}
@@ -59,7 +63,17 @@
 		font-family: var(--font-numeric);
 		font-size: var(--text-xl);
 		font-weight: var(--font-weight-semibold);
+		color: var(--color-text);
+	}
+
+	/* Earned only: green for a gain, red for a loss (matches the main app's
+	 * delta convention — rates/values stay white, signed deltas are tinted). */
+	.value.positive {
 		color: var(--color-success);
+	}
+
+	.value.negative {
+		color: var(--color-danger);
 	}
 
 	.caveat {
