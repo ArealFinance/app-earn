@@ -8,7 +8,9 @@
 	 *
 	 * When the user holds nothing → an empty-state nudge.
 	 */
-	import { Coins, Lock, Hourglass } from 'lucide-svelte';
+	import { Coins, Hourglass } from 'lucide-svelte';
+	import rwtLogo from '$lib/assets/tokens/rwt.png';
+	import strwtLogo from '$lib/assets/tokens/strwt.png';
 	import {
 		formatApr,
 		formatCountdown,
@@ -59,7 +61,7 @@
 		<ul class="list">
 			{#if rwt > 0}
 				<li class="row">
-					<span class="icon" aria-hidden="true"><Coins size={16} /></span>
+					<img class="token-logo" src={rwtLogo} alt="RWT" width="32" height="32" />
 					<span class="name">RWT</span>
 					<span class="amounts">
 						<span class="amount tabular">{formatTokenAmount(rwt)}</span>
@@ -70,7 +72,7 @@
 
 			{#if strwt > 0}
 				<li class="row">
-					<span class="icon" aria-hidden="true"><Lock size={16} /></span>
+					<img class="token-logo" src={strwtLogo} alt="stRWT" width="32" height="32" />
 					<span class="name">
 						stRWT
 						{#if apy !== null}
@@ -163,6 +165,14 @@
 		border-radius: var(--radius-sm);
 		background: var(--color-surface);
 		color: var(--color-primary);
+	}
+
+	.token-logo {
+		width: 32px;
+		height: 32px;
+		flex-shrink: 0;
+		border-radius: 50%;
+		object-fit: contain;
 	}
 
 	.name {
