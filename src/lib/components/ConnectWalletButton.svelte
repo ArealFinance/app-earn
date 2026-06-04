@@ -126,7 +126,7 @@
 		font-size: var(--text-base);
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-tight);
-		color: var(--color-white-900);
+		color: var(--color-on-accent);
 		background-color: var(--color-purple-400);
 		border-radius: var(--radius-button);
 		transition: transform var(--motion-fast) var(--ease-out),

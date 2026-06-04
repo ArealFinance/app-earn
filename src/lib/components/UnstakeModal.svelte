@@ -191,7 +191,7 @@
 	}
 
 	.btn.primary {
-		color: var(--color-white-900);
+		color: var(--color-on-accent);
 		background-color: var(--color-purple-400);
 	}
 

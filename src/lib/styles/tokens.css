@@ -23,45 +23,53 @@
 	 * the values that actually appear in the design.
 	 */
 
-	/* Neutrals — dark theme bases */
-	--color-dark-900: #080a0f; /* primary card background */
-	--color-dark-800: #070c1c; /* page background (slightly different shade) */
-	--color-dark-700: #181a29; /* inset, secondary surface, button outline */
-	--color-dark-600: #2e2e2e; /* divider, subtle border */
+	/* ------------------------------------------------------------
+	 * MONOCHROME theme (approved "Variant B" mockup, mockups/earn-mono.html).
+	 * The palette below is remapped to grayscale: every formerly-chromatic
+	 * token now points at a neutral value so anything referencing the palette
+	 * directly (buttons, sparkline, etc.) becomes monochrome. Only ONE accent
+	 * remains — white — for primary actions.
+	 * ------------------------------------------------------------ */
+
+	/* Neutrals — dark theme bases (warm-ish near-black grays) */
+	--color-dark-900: #121215; /* primary card background */
+	--color-dark-800: #08080a; /* page background */
+	--color-dark-700: #1b1b1f; /* inset, secondary surface, button outline */
+	--color-dark-600: rgba(255, 255, 255, 0.08); /* divider, subtle border */
 
 	/* Whites */
-	--color-white-900: #fbf2ff; /* primary text on dark */
-	--color-white-800: #ecedee; /* dark_mode/white_900 — alt text */
-	--color-white-700: #eadaff; /* wallet address text accent */
+	--color-white-900: #fafafa; /* primary text on dark */
+	--color-white-800: #e4e4e7; /* alt text */
+	--color-white-700: #a1a1aa; /* secondary / muted accent text */
 
 	/* Grays */
-	--color-gray-900: #717390; /* muted text */
-	--color-gray-900-20: rgba(113, 115, 144, 0.2); /* chip/tag bg */
+	--color-gray-900: #a1a1aa; /* muted text */
+	--color-gray-900-20: rgba(255, 255, 255, 0.06); /* chip/tag bg */
 
-	/* Slate — neutral chip/logo backgrounds (between dark-700 inset and gray text) */
-	--color-slate-700: #3c415f; /* default token-logo fallback bg */
+	/* Slate — neutral chip/logo backgrounds */
+	--color-slate-700: #232328; /* default token-logo fallback bg */
 
-	/* Purple — brand */
-	--color-purple-900: #9e60f6; /* primary accent solid */
-	--color-purple-700: #602fdc; /* gradient end */
-	--color-purple-500: #a56eff; /* gradient start */
-	--color-purple-400: #a984f3; /* secondary accent (footer button) */
-	--color-purple-300: #b894ff; /* hero glow */
-	--color-purple-200: #eadaff; /* light tint — wallet chip address text */
-	--color-purple-100: #230034; /* text on purple-on-white pill */
+	/* Purple — brand → remapped to grayscale whites/grays (mono) */
+	--color-purple-900: #fafafa; /* primary accent solid → white */
+	--color-purple-700: #d4d4d8; /* gradient end / hover-active dim */
+	--color-purple-500: #e4e4e7; /* gradient start / hover dim */
+	--color-purple-400: #fafafa; /* secondary accent → white (button fills) */
+	--color-purple-300: #d4d4d8; /* hero glow */
+	--color-purple-200: #d4d4d8; /* light tint */
+	--color-purple-100: #08080a; /* text on accent pill */
 
-	/* Status */
-	--color-green-900: #73ff83; /* Figma green_900 */
-	--color-green-700: #63ff75;
-	--color-green-500: #75e38c; /* positive delta */
-	--color-teal-900: #44d8ba;
-	--color-teal-700: #009393;
-	--color-blue-900: #4265ff;
-	--color-blue-500: #6e97ff; /* soft blue — info banners (master-pool guard) */
-	--color-magenta-900: #d844c6;
-	--color-red-900: #d84347; /* danger */
-	--color-pink-900: #ff0088; /* invalid-claim border (Figma red_900 variant) */
-	--color-orange-900: #ff8c00; /* status dot (demo banner) */
+	/* Status → neutralized (no green/red/amber/blue) */
+	--color-green-900: #e4e4e7; /* up-trend → light gray */
+	--color-green-700: #e4e4e7;
+	--color-green-500: #e4e4e7; /* positive delta → light gray */
+	--color-teal-900: #a1a1aa;
+	--color-teal-700: #a1a1aa;
+	--color-blue-900: #a1a1aa;
+	--color-blue-500: #a1a1aa; /* info banners → neutral gray */
+	--color-magenta-900: #a1a1aa;
+	--color-red-900: #a1a1aa; /* danger → mid gray */
+	--color-pink-900: #a1a1aa; /* invalid-claim border → mid gray */
+	--color-orange-900: #a1a1aa; /* warning/status dot → neutral gray */
 
 	/* ============================================================
 	 * Color — semantic aliases
@@ -71,7 +79,7 @@
 	 */
 	--color-bg: var(--color-dark-800); /* page background */
 	--color-surface: var(--color-dark-900); /* primary card surface */
-	--color-surface-muted: rgba(7, 12, 28, 0.4); /* translucent card (footer) */
+	--color-surface-muted: rgba(255, 255, 255, 0.03); /* translucent card (footer) — neutral */
 	--color-surface-inset: var(--color-dark-700); /* deeper inset */
 	--color-token-logo-fallback-bg: var(--color-slate-700); /* default bg behind token glyph */
 	--color-border: rgba(255, 255, 255, 0.07); /* faint border on surfaces */
@@ -82,6 +90,7 @@
 	--color-text-muted: var(--color-gray-900);
 	--color-text-inverse: var(--color-dark-900); /* text on light surfaces */
 	--color-text-accent: var(--color-white-700);
+	--color-on-accent: var(--color-dark-800); /* dark text on the white accent (buttons) */
 
 	--color-primary: var(--color-purple-900);
 	--color-primary-gradient-from: var(--color-purple-500);
@@ -173,34 +182,31 @@
 	/* Glass surface — used by header, wallet chip (translucent over aurora) */
 	--color-surface-glass: rgba(0, 0, 0, 0.3);
 
-	/* Tonal pill / badge tints — match StatusPill `tonal` variant + dev kit badges. */
-	--color-success-tint: rgba(115, 255, 131, 0.14);
-	--color-warning-tint: rgba(255, 140, 0, 0.14);
-	--color-danger-tint: rgba(216, 67, 71, 0.16);
-	--color-info-tint: rgba(158, 96, 246, 0.16);
+	/* Tonal tints — monochrome: all neutral faint white washes (no chroma). */
+	--color-success-tint: rgba(255, 255, 255, 0.06);
+	--color-warning-tint: rgba(255, 255, 255, 0.06);
+	--color-danger-tint: rgba(255, 255, 255, 0.06);
+	--color-info-tint: rgba(255, 255, 255, 0.06);
 
 	/* Subtle hover overlay for ghost-style buttons over dark surfaces. */
 	--color-hover-tint: rgba(255, 255, 255, 0.04);
 
-	/* Soft success/danger background fills — used by hover states, success pills,
-	 * status icon backplates. Stepped alpha scale: soft (hover) → strong (pill bg). */
-	--color-success-bg-soft: rgba(115, 255, 131, 0.08);
-	--color-success-bg-faint: rgba(115, 255, 131, 0.1);
-	--color-success-bg-medium: rgba(115, 255, 131, 0.12);
-	--color-success-bg-strong: rgba(115, 255, 131, 0.15);
-	--color-danger-bg-strong: rgba(216, 67, 71, 0.15);
+	/* Soft background fills — neutral white washes (mono). */
+	--color-success-bg-soft: rgba(255, 255, 255, 0.05);
+	--color-success-bg-faint: rgba(255, 255, 255, 0.06);
+	--color-success-bg-medium: rgba(255, 255, 255, 0.08);
+	--color-success-bg-strong: rgba(255, 255, 255, 0.1);
+	--color-danger-bg-strong: rgba(255, 255, 255, 0.1);
 
-	/* Soft info accent — used by advisory banners (master-pool guard).
-	 * Distinct from `--color-info` (saturated #4265ff): this is a calmer
-	 * sky-blue tone meant for inline notes rather than alerts. */
-	--color-accent-info: var(--color-blue-500);
-	--color-accent-info-bg-soft: rgba(110, 151, 255, 0.08);
-	--color-accent-info-border: rgba(110, 151, 255, 0.3);
+	/* Soft info accent — neutral (mono). */
+	--color-accent-info: var(--color-text-muted);
+	--color-accent-info-bg-soft: rgba(255, 255, 255, 0.05);
+	--color-accent-info-border: rgba(255, 255, 255, 0.16);
 
-	/* Chart-specific (PriceChart axis labels, on-success badge text). */
-	--color-chart-axis: rgba(131, 164, 148, 0.4); /* X-axis date labels — muted green-gray */
-	--color-chart-line: var(--color-green-900); /* Area chart line + glow */
-	--color-on-success: #0d0a17; /* Dark text on solid green badge */
+	/* Chart-specific. */
+	--color-chart-axis: rgba(255, 255, 255, 0.3); /* X-axis labels — neutral */
+	--color-chart-line: var(--color-white-900); /* sparkline */
+	--color-on-success: var(--color-dark-800); /* dark text on a light badge */
 
 	/* ============================================================
 	 * Motion

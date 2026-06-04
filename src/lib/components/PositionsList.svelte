@@ -231,7 +231,7 @@
 		padding: var(--space-2) var(--space-3);
 		font-size: var(--text-xs);
 		font-weight: var(--font-weight-semibold);
-		color: var(--color-white-900);
+		color: var(--color-on-accent);
 		background-color: var(--color-purple-400);
 		border-radius: var(--radius-sm);
 		white-space: nowrap;
@@ -269,7 +269,7 @@
 		padding: 0 var(--space-6);
 		font-size: var(--text-base);
 		font-weight: var(--font-weight-semibold);
-		color: var(--color-white-900);
+		color: var(--color-on-accent);
 		background-color: var(--color-purple-400);
 		border-radius: var(--radius-button);
 		transition: background-color var(--motion-fast) var(--ease-out);
