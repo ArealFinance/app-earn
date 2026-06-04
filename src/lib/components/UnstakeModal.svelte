@@ -129,15 +129,17 @@
 		gap: var(--space-2);
 		padding: var(--space-3) var(--space-4);
 		font-size: var(--text-sm);
-		color: var(--color-warning);
-		background: var(--color-warning-tint);
-		border: 1px solid rgba(255, 140, 0, 0.3);
+		color: var(--color-text);
+		background: var(--color-surface-inset);
+		border: 1px solid var(--color-border);
+		border-left: 2px solid var(--color-warning);
 		border-radius: var(--radius-md);
 	}
 
 	.warn :global(svg) {
 		flex-shrink: 0;
 		margin-top: 2px;
+		color: var(--color-warning);
 	}
 
 	.preview {

@@ -154,13 +154,14 @@
 		font-size: var(--text-xs);
 		font-weight: var(--font-weight-semibold);
 		letter-spacing: var(--tracking-wide);
-		color: var(--color-primary);
-		background-color: var(--color-info-tint);
+		color: var(--color-text-muted);
+		background-color: var(--color-surface-inset);
 		border-radius: var(--radius-xs);
 		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.max-btn:hover:not(:disabled) {
+		color: var(--color-text);
 		background-color: var(--color-surface-inset);
 	}
 

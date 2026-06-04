@@ -231,15 +231,15 @@
 		padding: var(--space-2) var(--space-3);
 		font-size: var(--text-xs);
 		font-weight: var(--font-weight-semibold);
-		color: var(--color-on-success);
-		background-color: var(--color-success);
+		color: var(--color-white-900);
+		background-color: var(--color-purple-400);
 		border-radius: var(--radius-sm);
 		white-space: nowrap;
 		transition: background-color var(--motion-fast) var(--ease-out);
 	}
 
 	.claim-btn:hover {
-		background-color: var(--color-green-700);
+		background-color: var(--color-purple-500);
 	}
 
 	.empty {
