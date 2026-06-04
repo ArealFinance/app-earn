@@ -189,7 +189,7 @@
 
 <header class="top-strip">
 	<a class="brand" href="/" aria-label="Areal Earn">
-		<img class="brand-mark" src="/images/logo-areal.svg" alt="" aria-hidden="true" />
+		<img class="brand-mark" src="/images/areal-mark.svg" alt="" aria-hidden="true" />
 		<span class="brand-text">Areal Earn</span>
 	</a>
 	<div class="top-right">
@@ -292,14 +292,13 @@
 		text-decoration: none;
 	}
 
-	/* Mark-only: clip the 117x24 logo SVG to its leftmost square (the crystal)
-	 * via object-fit cover, exactly like the main app's <Logo hideWordmark>. */
+	/* Standalone Areal crystal mark (the favicon crystal — same brand mark as
+	 * the main app), shown whole via object-fit contain (no clipping). */
 	.brand-mark {
 		display: block;
-		width: 24px;
-		height: 24px;
-		object-fit: cover;
-		object-position: left center;
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
 		flex-shrink: 0;
 	}
 
