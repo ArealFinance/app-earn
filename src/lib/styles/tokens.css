@@ -9,10 +9,10 @@
  *   Semantic aliases reference palette tokens, NEVER raw hex.
  */
 
-/*
- * Note: app-earn intentionally drops the custom font imports from the main app
- * to keep the bundle small. Numeric and body text fall back to Inter/system-ui.
- */
+/* Fonts — same families as the main app: Halvar Breit (display headlines),
+ * Inter (body), Onest (numeric), Geist Mono (mono). @import must precede the
+ * rules below. See fonts.css. */
+@import './fonts.css';
 
 :root {
 	/* ============================================================

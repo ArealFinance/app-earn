@@ -1,0 +1,46 @@
+/*
+ * Halvar Breitschrift — Typemates GmbH (commercial license).
+ *
+ * Hosted on https://fonts.areal.finance (origin: vps-vpn nginx, edge: Cloudflare).
+ * Source files (.woff2) are NOT in this repo — license forbids public redistribution.
+ * Used at runtime via @font-face from the licensed origin domain (allowed by Web License).
+ *
+ * If running locally with no network, system-ui fallback applies (font-display: swap).
+ *
+ * Inter (body / sub-headings) — SIL Open Font License, served from Google Fonts CDN.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500;600&family=Inter:wght@400;500;600&family=Onest:wght@400;500;700&display=swap');
+
+
+@font-face {
+	font-family: 'Halvar Breit';
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+	src: url('https://fonts.areal.finance/halvar/halvar-breit-regular.woff2?v=2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Halvar Breit';
+	font-weight: 500;
+	font-style: normal;
+	font-display: swap;
+	src: url('https://fonts.areal.finance/halvar/halvar-breit-medium.woff2?v=2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Halvar Breit';
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+	src: url('https://fonts.areal.finance/halvar/halvar-breit-bold.woff2?v=2') format('woff2');
+}
+
+@font-face {
+	font-family: 'Halvar Breit';
+	font-weight: 900;
+	font-style: normal;
+	font-display: swap;
+	src: url('https://fonts.areal.finance/halvar/halvar-breit-black.woff2?v=2') format('woff2');
+}
