@@ -165,12 +165,8 @@
 	--radius-token-logo: 9px; /* token/asset logo squircle (between xs=4 and md=12) */
 
 	/* ============================================================
-	 * Effects (Figma uses minimal shadows — mostly glows on accents)
+	 * Effects — neutral elevation shadows only (no decorative glows).
 	 * ============================================================ */
-	--glow-teal: 0 0 8px 4px rgba(68, 216, 186, 0.5);
-	--glow-orange: 0 0 8px 4px rgba(255, 140, 0, 0.5);
-	--glow-purple: 0 0 8px 4px rgba(158, 96, 246, 0.4);
-
 	--shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.4);
 	--shadow-card: 0 4px 16px rgba(0, 0, 0, 0.2);
 
@@ -205,21 +201,6 @@
 	--color-chart-axis: rgba(131, 164, 148, 0.4); /* X-axis date labels — muted green-gray */
 	--color-chart-line: var(--color-green-900); /* Area chart line + glow */
 	--color-on-success: #0d0a17; /* Dark text on solid green badge */
-
-	/* Aurora — decorative purple gradient mesh (page-wide bg).
-	 * Approximates Figma's multi-blend SVG-mask ellipse stack via overlapping radials.
-	 * Strong top-centre bloom around the hero/crystal, softer wash across the rest. */
-	--gradient-aurora:
-		/* Bright top-rim wash (subtle purple band along the top edge) */
-		radial-gradient(ellipse 100% 40% at 50% 0%, rgba(168, 132, 255, 0.4) 0%, transparent 70%),
-		/* Strong upper-centre bloom (peaks around the crystal) */
-		radial-gradient(ellipse 60% 70% at 60% 25%, rgba(165, 110, 255, 0.65) 0%, transparent 60%),
-		/* Right-side glow next to the crystal */
-		radial-gradient(circle 700px at 90% 30%, rgba(165, 110, 255, 0.45) 0%, transparent 65%),
-		/* Mid-left soft purple */
-		radial-gradient(ellipse 60% 70% at 0% 40%, rgba(120, 80, 220, 0.35) 0%, transparent 65%),
-		/* Bottom-centre subtle glow */
-		radial-gradient(ellipse 70% 50% at 50% 100%, rgba(96, 47, 220, 0.3) 0%, transparent 70%);
 
 	/* ============================================================
 	 * Motion
