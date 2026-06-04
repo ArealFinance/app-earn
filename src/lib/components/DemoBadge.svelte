@@ -32,19 +32,19 @@
 		font-weight: var(--font-weight-medium);
 		letter-spacing: var(--tracking-wide);
 		text-transform: uppercase;
-		color: var(--color-warning);
-		background: var(--color-warning-tint);
-		border: 1px solid rgba(255, 140, 0, 0.3);
+		color: var(--color-text-muted);
+		background: var(--color-surface-inset);
+		border: 1px solid var(--color-border);
 		border-radius: var(--radius-pill);
 		cursor: help;
 		white-space: nowrap;
 	}
 
+	/* Small solid amber status dot — the single, restrained accent. No glow. */
 	.dot {
-		width: 6px;
-		height: 6px;
+		width: 5px;
+		height: 5px;
 		border-radius: 50%;
 		background: var(--color-warning);
-		box-shadow: var(--glow-orange);
 	}
 </style>
