@@ -193,7 +193,7 @@
 		<span class="brand-text">Areal</span>
 	</a>
 	<div class="top-right">
-		<HeaderRates {bookNav} {marketPrice} {strwtRate} />
+		<HeaderRates {bookNav} {strwtRate} />
 		{#if connected}
 			<WalletPill />
 		{/if}
