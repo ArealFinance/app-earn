@@ -89,7 +89,7 @@
 		<div class="success">
 			<CheckCircle2 size={44} aria-hidden="true" />
 			<p class="success-title">Staked — got {formatTokenAmount(quote.strwtOut)} stRWT</p>
-			<p class="demo">Confirmed on devnet</p>
+			<p class="demo">Confirmed on-chain</p>
 		</div>
 	{:else}
 		<p class="note">
@@ -146,7 +146,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Live devnet — a real transaction will be submitted</p>
+		<p class="demo">A real on-chain transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 

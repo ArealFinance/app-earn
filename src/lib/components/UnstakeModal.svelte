@@ -70,7 +70,7 @@
 				Unstaking {formatTokenAmount(quote.rwtOut)} RWT
 			</p>
 			<p class="success-sub">Claimable {formatUnlockDate(quote.unlockTs)} (21-day cooldown)</p>
-			<p class="demo">Confirmed on devnet</p>
+			<p class="demo">Confirmed on-chain</p>
 		</div>
 	{:else}
 		<AmountInput
@@ -118,7 +118,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Live devnet — a real transaction will be submitted</p>
+		<p class="demo">A real on-chain transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 

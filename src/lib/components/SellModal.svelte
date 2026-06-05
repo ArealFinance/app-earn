@@ -136,7 +136,7 @@
 		<div class="success">
 			<CheckCircle2 size={44} aria-hidden="true" />
 			<p class="success-title">Sold for {formatUsd(lastSoldUsdc)}</p>
-			<p class="demo">Confirmed on devnet</p>
+			<p class="demo">Confirmed on-chain</p>
 		</div>
 	{:else}
 		<p class="note">RWT has no on-chain redeem — this is a DEX swap to USDC via Meteora.</p>
@@ -211,7 +211,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Live devnet — a real swap transaction will be submitted</p>
+		<p class="demo">A real on-chain swap will be submitted</p>
 	{/if}
 </BottomSheet>
 

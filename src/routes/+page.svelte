@@ -25,7 +25,6 @@
 	} from '$lib/earn/derive';
 	import type { Period, PublicStats as PublicStatsType } from '$lib/earn/types';
 
-	import DemoBadge from '$lib/components/DemoBadge.svelte';
 	import HeaderRates from '$lib/components/HeaderRates.svelte';
 	import WalletPill from '$lib/components/WalletPill.svelte';
 	import ConnectWalletButton from '$lib/components/ConnectWalletButton.svelte';
@@ -195,7 +194,6 @@
 	</a>
 	<div class="top-right">
 		<HeaderRates {bookNav} {marketPrice} {strwtRate} />
-		<DemoBadge />
 		{#if connected}
 			<WalletPill />
 		{/if}
@@ -217,7 +215,7 @@
 
 			<div class="cta-wrap">
 				<ConnectWalletButton />
-				<p class="cta-disclaimer">By connecting, you agree to terms (demo).</p>
+				<p class="cta-disclaimer">By connecting, you agree to the terms.</p>
 			</div>
 		{:else}
 			<PortfolioHeader

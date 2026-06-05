@@ -226,7 +226,7 @@
 			<p class="success-title">
 				{lastPath === 'dex' ? 'Bought' : 'Minted'} {formatTokenAmount(lastRwtOut)} RWT
 			</p>
-			<p class="demo">Confirmed on devnet</p>
+			<p class="demo">Confirmed on-chain</p>
 		</div>
 	{:else}
 		{#if usdc <= 0}
@@ -384,7 +384,7 @@
 			</button>
 		</div>
 
-		<p class="demo">Live devnet — a real transaction will be submitted</p>
+		<p class="demo">A real on-chain transaction will be submitted</p>
 	{/if}
 </BottomSheet>
 

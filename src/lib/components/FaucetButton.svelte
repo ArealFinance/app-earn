@@ -79,7 +79,7 @@
 			{#if status === 'error' && message}
 				<p class="faucet-error" role="alert">{message}</p>
 			{:else}
-				<p class="faucet-hint">Devnet only — drips test USDC (and SOL for fees) to your wallet.</p>
+				<p class="faucet-hint">Drips test USDC (and SOL for fees) to your wallet.</p>
 			{/if}
 		{/if}
 	</div>
