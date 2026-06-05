@@ -26,6 +26,7 @@
 	import type { Period, PublicStats as PublicStatsType } from '$lib/earn/types';
 
 	import DemoBadge from '$lib/components/DemoBadge.svelte';
+	import HeaderRates from '$lib/components/HeaderRates.svelte';
 	import WalletPill from '$lib/components/WalletPill.svelte';
 	import ConnectWalletButton from '$lib/components/ConnectWalletButton.svelte';
 	import PublicStats from '$lib/components/PublicStats.svelte';
@@ -193,6 +194,7 @@
 		<span class="brand-text">Areal</span>
 	</a>
 	<div class="top-right">
+		<HeaderRates {bookNav} {marketPrice} {strwtRate} />
 		<DemoBadge />
 		{#if connected}
 			<WalletPill />
@@ -304,8 +306,10 @@
 
 	.top-right {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--space-2);
+		justify-content: flex-end;
+		gap: var(--space-1) var(--space-2);
 	}
 
 	.page {
