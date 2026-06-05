@@ -188,9 +188,9 @@
 </script>
 
 <header class="top-strip">
-	<a class="brand" href="/" aria-label="Areal Earn">
+	<a class="brand" href="/" aria-label="Areal">
 		<img class="brand-mark" src="/images/areal-mark.svg" alt="" aria-hidden="true" />
-		<span class="brand-text">Areal Earn</span>
+		<span class="brand-text">Areal</span>
 	</a>
 	<div class="top-right">
 		<DemoBadge />
