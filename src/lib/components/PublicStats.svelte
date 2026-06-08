@@ -31,7 +31,7 @@
 		<span class="label">Staking APY</span>
 		{#if stats.stakingApy === null}
 			<span class="value tabular muted" title="Not enough rate history yet">—</span>
-			<span class="caveat">accumulating data…</span>
+			<span class="caveat">building history…</span>
 		{:else}
 			<span class="value tabular">{formatApr(stats.stakingApy)}</span>
 			<span class="caveat">annualised, realised</span>

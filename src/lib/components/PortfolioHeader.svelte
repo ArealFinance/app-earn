@@ -26,11 +26,14 @@
 		period: Period;
 		/** Sparkline series (already scoped to the period), built from real stats. */
 		values: number[];
+		/** Concrete "available in ~N days" hint shown when the delta isn't ready. */
+		accumulatingHint: string;
 		/** Called when the user picks a different period. */
 		onPeriodChange: (period: Period) => void;
 	}
 
-	let { totalValue, changePct, period, values, onPeriodChange }: Props = $props();
+	let { totalValue, changePct, period, values, accumulatingHint, onPeriodChange }: Props =
+		$props();
 
 	const PERIODS: Array<{ id: Period; label: string }> = [
 		{ id: 'day', label: '1D' },
@@ -72,7 +75,7 @@
 		{:else}
 			<span class="delta neutral">
 				<span class="tabular">—</span>
-				<span class="period-tag">accumulating data…</span>
+				<span class="period-tag">{accumulatingHint}</span>
 			</span>
 		{/if}
 	</div>

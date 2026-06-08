@@ -23,6 +23,7 @@ import {
 	changePctOverWindow,
 	buildSeries,
 	headlineApy,
+	accumulatingHint,
 	PERIOD_DAYS
 } from './derive';
 
@@ -636,5 +637,36 @@ describe('Integration scenarios', () => {
 
 		expect(earned).not.toBeNull(); // Earned CAN be computed (just 0)
 		expect(changePct).toBeNull(); // changePct is null because value_start is 0
+	});
+});
+
+describe('accumulatingHint', () => {
+	const NOW = Date.parse('2026-06-08T00:00:00.000Z');
+	const daysAgo = (d: number) => NOW - d * 24 * 60 * 60 * 1000;
+
+	it('falls back to "building history…" with no history start', () => {
+		expect(accumulatingHint(null, 'week', NOW)).toBe('building history…');
+	});
+
+	it('counts down whole days remaining for a window (1 day of history, 7d window)', () => {
+		// 6 days left until the week window has enough span.
+		expect(accumulatingHint(daysAgo(1), 'week', NOW)).toBe('available in ~6 days');
+	});
+
+	it('uses singular "day" when one day remains', () => {
+		expect(accumulatingHint(daysAgo(6), 'week', NOW)).toBe('available in ~1 day');
+	});
+
+	it('rounds partial days up', () => {
+		// 1.5 days elapsed → 5.5 remaining → ceil = 6.
+		expect(accumulatingHint(daysAgo(1.5), 'week', NOW)).toBe('available in ~6 days');
+	});
+
+	it('falls back to "building history…" once the window is already covered', () => {
+		expect(accumulatingHint(daysAgo(10), 'week', NOW)).toBe('building history…');
+	});
+
+	it('uses the month window length (30d)', () => {
+		expect(accumulatingHint(daysAgo(5), 'month', NOW)).toBe('available in ~25 days');
 	});
 });

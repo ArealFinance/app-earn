@@ -18,6 +18,7 @@
 	import { fetchMarketPrice } from '$lib/chain/meteora';
 	import { fetchEarnStats, type EarnStats } from '$lib/chain/stats';
 	import {
+		accumulatingHint,
 		buildSeries,
 		changePctOverWindow,
 		earnedOverWindow,
@@ -123,6 +124,17 @@
 		earnStats ? earnStats.apy[period] : null
 	);
 
+	// Epoch-ms of the OLDEST snapshot (null when there's no history / endpoint
+	// down). Drives the human "available in ~N days" hint for windows that don't
+	// have enough history yet.
+	const historyStartMs = $derived<number | null>(
+		earnStats && earnStats.history.length > 0 ? Date.parse(earnStats.history[0].ts) : null
+	);
+
+	// Concrete countdown shown instead of the vague "accumulating data…" — same
+	// for APY / earned / delta since they all key off the selected window.
+	const notReadyHint = $derived(accumulatingHint(historyStartMs, period, Date.now()));
+
 	// Sparkline series, built from the REAL stats time-series sliced to the
 	// window. With holdings → the user's portfolio-value curve; without holdings
 	// (or not connected) → the protocol NAV curve so the chart still shows the
@@ -222,10 +234,11 @@
 				{changePct}
 				{period}
 				values={seriesValues}
+				accumulatingHint={notReadyHint}
 				onPeriodChange={(p) => (period = p)}
 			/>
 
-			<YieldStats apy={periodApy} {earnedUsd} {period} />
+			<YieldStats apy={periodApy} {earnedUsd} {period} accumulatingHint={notReadyHint} />
 
 			<ActionBar {canSell} {sellDisabledReason} {canStake} {canUnstake} onAction={openSheet} />
 
@@ -236,6 +249,7 @@
 				{bookNav}
 				{strwtRate}
 				apy={periodApy}
+				accumulatingHint={notReadyHint}
 				onBuy={() => openSheet('buy')}
 				onClaim={handleClaim}
 			/>

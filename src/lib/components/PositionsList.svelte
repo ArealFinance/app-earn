@@ -32,13 +32,15 @@
 		strwtRate: number;
 		/** Real staking APY (fraction) for the stRWT row, or `null` while accumulating. */
 		apy: number | null;
+		/** Concrete "available in ~N days" hint shown when APY isn't ready. */
+		accumulatingHint: string;
 		/** Buy CTA for the empty state. */
 		onBuy: () => void;
 		/** Claim a matured unstake ticket. */
 		onClaim: (ticketId: string) => void;
 	}
 
-	let { rwt, strwt, pendingUnstakes, bookNav, strwtRate, apy, onBuy, onClaim }: Props =
+	let { rwt, strwt, pendingUnstakes, bookNav, strwtRate, apy, accumulatingHint, onBuy, onClaim }: Props =
 		$props();
 
 	const rwtUsd = $derived(rwt * bookNav);
@@ -79,7 +81,7 @@
 						{#if apy !== null}
 							<span class="apy-tag tabular">APY {formatApr(apy)}</span>
 						{:else}
-							<span class="apy-tag tabular muted">APY accumulating…</span>
+							<span class="apy-tag tabular muted">APY {accumulatingHint}</span>
 						{/if}
 					</span>
 					<span class="amounts">

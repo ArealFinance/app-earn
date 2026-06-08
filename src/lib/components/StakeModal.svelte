@@ -122,7 +122,7 @@
 			{:else}
 				<div class="preview-row">
 					<span>Window APY</span>
-					<span class="tabular muted">accumulating data…</span>
+					<span class="tabular muted">building history…</span>
 				</div>
 			{/if}
 			<div class="preview-row total">

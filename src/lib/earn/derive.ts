@@ -18,6 +18,29 @@ export const PERIOD_DAYS: Record<StatsPeriod, number> = { day: 1, week: 7, month
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Human hint for a window whose metric isn't ready yet — e.g.
+ * `"available in ~6 days"`. Estimated from how much snapshot history exists
+ * (`historyStartMs` = epoch-ms of the OLDEST snapshot) versus the window length:
+ * a window becomes computable once history spans its full length.
+ *
+ * Falls back to `"building history…"` when we can't estimate — no history yet,
+ * the stats endpoint is unreachable, or the window should already be ready.
+ */
+export function accumulatingHint(
+	historyStartMs: number | null,
+	period: StatsPeriod,
+	nowMs: number
+): string {
+	if (historyStartMs === null || !Number.isFinite(historyStartMs)) {
+		return 'building history…';
+	}
+	const elapsedDays = (nowMs - historyStartMs) / DAY_MS;
+	const remaining = Math.ceil(PERIOD_DAYS[period] - elapsedDays);
+	if (remaining <= 0) return 'building history…';
+	return `available in ~${remaining} day${remaining === 1 ? '' : 's'}`;
+}
+
 /** Current user holdings used to value the series. */
 export interface Holdings {
 	/** Liquid RWT. */

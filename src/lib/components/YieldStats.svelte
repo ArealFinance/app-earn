@@ -16,9 +16,11 @@
 		earnedUsd: number | null;
 		/** Selected window — drives the caveat label. */
 		period: Period;
+		/** Concrete "available in ~N days" hint shown when a value isn't ready. */
+		accumulatingHint: string;
 	}
 
-	let { apy, earnedUsd, period }: Props = $props();
+	let { apy, earnedUsd, period, accumulatingHint }: Props = $props();
 
 	const windowLabel = $derived(
 		period === 'day' ? '24h' : period === 'week' ? '7d' : '30d'
@@ -30,7 +32,7 @@
 		<span class="label">APY</span>
 		{#if apy === null}
 			<span class="value tabular muted">—</span>
-			<span class="hint">accumulating data…</span>
+			<span class="hint">{accumulatingHint}</span>
 		{:else}
 			<span class="value tabular">{formatApr(apy)}</span>
 		{/if}
@@ -39,7 +41,7 @@
 		<span class="label">Earned ({windowLabel})</span>
 		{#if earnedUsd === null}
 			<span class="value tabular muted">—</span>
-			<span class="hint">accumulating data…</span>
+			<span class="hint">{accumulatingHint}</span>
 		{:else}
 			<span
 				class="value tabular"
