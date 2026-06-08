@@ -9,7 +9,7 @@
 </script>
 
 <svelte:head>
-	<title>Areal Earn — Yield on RWT</title>
+	<title>Areal — Yield on RWT</title>
 </svelte:head>
 
 {@render children?.()}
