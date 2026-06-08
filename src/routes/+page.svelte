@@ -189,8 +189,7 @@
 
 <header class="top-strip">
 	<a class="brand" href="/" aria-label="Areal">
-		<img class="brand-mark" src="/images/areal-mark.svg" alt="" aria-hidden="true" />
-		<span class="brand-text">Areal</span>
+		<img class="brand-logo" src="/images/logo-areal.svg" alt="Areal" />
 	</a>
 	<div class="top-right">
 		<HeaderRates {bookNav} {strwtRate} />
@@ -280,10 +279,6 @@
 	.brand {
 		display: inline-flex;
 		align-items: center;
-		gap: var(--space-2);
-		font-size: var(--text-sm);
-		font-weight: var(--font-weight-semibold);
-		letter-spacing: var(--tracking-tight);
 		color: var(--color-text);
 		text-decoration: none;
 	}
@@ -292,13 +287,12 @@
 		text-decoration: none;
 	}
 
-	/* Standalone Areal crystal mark (the favicon crystal — same brand mark as
-	 * the main app), shown whole via object-fit contain (no clipping). */
-	.brand-mark {
+	/* Same vector wordmark (crystal + "Areal") as the main app's Logo component
+	 * (logo-areal.svg, 117×24). Height fixed, width scales to preserve ratio. */
+	.brand-logo {
 		display: block;
-		width: 28px;
-		height: 28px;
-		object-fit: contain;
+		height: 24px;
+		width: auto;
 		flex-shrink: 0;
 	}
 
