@@ -18,14 +18,12 @@
  *     [8..40)   authority         [32]
  *     [40..72)  pending_authority [32]
  *     [72]      has_pending       bool
- *     [73..105) pause_authority   [32]
- *     [105]     is_paused         bool
- *     [106..138) rwt_mint         [32]
- *     [138..170) strwt_mint       [32]
- *     [170..202) reward_depositor [32]
- *     [202..234) pool_vault       [32]
- *     [234..242) total_rwt_active    u64 (LE)  ← rate numerator
- *     [242..250) total_rwt_reserved  u64 (LE)
+ *     [73..105) rwt_mint         [32]
+ *     [105..137) strwt_mint       [32]
+ *     [137..169) reward_depositor [32]
+ *     [169..201) pool_vault       [32]
+ *     [201..209) total_rwt_active    u64 (LE)  ← rate numerator
+ *     [209..217) total_rwt_reserved  u64 (LE)
  *
  *   UnstakeTicket:
  *     [0..8)   discriminator
@@ -141,7 +139,7 @@ export async function fetchStrwtRate(): Promise<number> {
 
 	if (!configInfo) return Number(VIRTUAL_ASSETS / VIRTUAL_SHARES);
 
-	const active = readU64LE(configInfo.data, 234);
+	const active = readU64LE(configInfo.data, 201);
 	const rateScaled =
 		((active + VIRTUAL_ASSETS) * RATE_SCALE) / (strwtSupply + VIRTUAL_SHARES);
 	return fromScaled(rateScaled);
