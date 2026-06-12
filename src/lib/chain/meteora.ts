@@ -30,6 +30,7 @@ import {
 	COMMITMENT,
 	CLUSTER,
 	METEORA_POOL,
+	HAS_METEORA_POOL,
 	METEORA_TOKEN_X,
 	METEORA_TOKEN_Y,
 	TOKEN_DECIMALS,
@@ -47,6 +48,15 @@ import type { SendFn } from './tx';
 let poolPromise: Promise<DLMM> | null = null;
 
 async function getPool(): Promise<DLMM> {
+	// C1: on mainnet pre-launch no RWT/USDC pool exists yet (`VITE_METEORA_POOL`
+	// unset → METEORA_POOL is the zero placeholder). Fail fast with a clear
+	// reason instead of asking DLMM.create to fetch the all-zero account. Every
+	// caller already treats a getPool() rejection as "market unavailable"
+	// (fetchMarketPrice → null, quote/sell surfaces the error), so the swap UI
+	// degrades gracefully until the pool is configured at launch.
+	if (!HAS_METEORA_POOL) {
+		throw new Error('Meteora RWT/USDC pool is not configured for this network (VITE_METEORA_POOL unset)');
+	}
 	if (!poolPromise) {
 		poolPromise = DLMM.create(connection, METEORA_POOL, { cluster: CLUSTER }).catch((err) => {
 			// Reset on failure so the next call retries instead of caching a reject.
