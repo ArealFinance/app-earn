@@ -48,7 +48,6 @@ import {
 	RWT_MINT,
 	STRWT_MINT,
 	USDC_MINT,
-	BASKET_VAULT,
 	NAV_SCALE,
 	INITIAL_NAV,
 	RATE_SCALE,
@@ -145,16 +144,23 @@ export async function fetchStrwtRate(): Promise<number> {
 	return fromScaled(rateScaled);
 }
 
-// ── TVL (basket vault USDC balance, USD) ─────────────────────────────────────────
+// ── TVL = AUM (total_invested_capital, USD) ──────────────────────────────────────
 
 /**
- * TVL derived from the basket vault's USDC balance. This is the on-chain
- * capital actually held by the contract (the off-chain liquidity legs are not
- * visible here, so this is a conservative lower bound — labelled as such).
+ * TVL = AUM = total_invested_capital, the on-chain RWA backing value behind the
+ * RWT supply. This is the SAME u128 (6-decimal USD) field Book NAV is derived
+ * from — read at byte offset 8 of EarnConfig (right after the discriminator).
+ *
+ * The genesis backing is off-chain (RWT representing a real-world asset), so the
+ * basket vault's on-chain USDC balance is only leftover dust and is NOT a valid
+ * TVL. total_invested_capital is the protocol's authoritative AUM and grows as
+ * users deposit.
  */
 export async function fetchTvl(): Promise<number> {
-	const usdc = await readTokenAccountAmount(BASKET_VAULT);
-	return fromScaled(usdc);
+	const configInfo = await connection.getAccountInfo(EARN_CONFIG_PDA, COMMITMENT);
+	if (!configInfo) return 0;
+	const capital = readU128LE(configInfo.data, 8); // total_invested_capital (6-dec USD)
+	return fromScaled(capital);
 }
 
 // ── Per-wallet balances ──────────────────────────────────────────────────────────
