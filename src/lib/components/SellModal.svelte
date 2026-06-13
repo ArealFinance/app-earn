@@ -11,10 +11,10 @@
 	 * below book value). Market price comes from the pool's active bin; Book NAV
 	 * is the on-chain EarnConfig read.
 	 */
-	import { CheckCircle2, AlertTriangle } from 'lucide-svelte';
+	import { CheckCircle2, AlertTriangle, Info } from 'lucide-svelte';
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
-	import { quoteSellRwt, type SellQuote } from '$lib/chain/meteora';
+	import { quoteSellRwt, MeteoraError, type SellQuote } from '$lib/chain/meteora';
 	import { DEFAULT_SLIPPAGE_BPS } from '$lib/chain/config';
 	import { formatTokenAmount, formatUsd, formatNav } from '$lib/utils/format';
 	import { wallet } from '$lib/wallet/store';
@@ -40,6 +40,12 @@
 	let quote = $state<SellQuote | null>(null);
 	let quoting = $state(false);
 	let quoteError = $state<string | null>(null);
+	// True when the quote failed specifically because the pool has no USDC
+	// liquidity to pay out (typed MeteoraError 'insufficient-liquidity'). This is
+	// a calm, informational state — NOT a red error: selling is simply not
+	// possible until USDC liquidity is added, after which it works with no code
+	// change. Kept separate from `quoteError` so genuine errors stay red.
+	let sellUnavailable = $state(false);
 	let lastSoldUsdc = $state(0);
 
 	const rwt = $derived($wallet.rwt);
@@ -55,7 +61,7 @@
 	const belowBookNav = $derived(marketPrice !== null && marketPrice < bookNav);
 
 	const canSubmit = $derived(
-		amount > 0 && !overBalance && !!quote && !quoting && status === 'idle'
+		amount > 0 && !overBalance && !sellUnavailable && !!quote && !quoting && status === 'idle'
 	);
 
 	// ── Debounced live quote ──────────────────────────────────────────────────
@@ -73,12 +79,14 @@
 			quote = null;
 			quoting = false;
 			quoteError = null;
+			sellUnavailable = false;
 			return;
 		}
 
 		const token = ++quoteToken;
 		quoting = true;
 		quoteError = null;
+		sellUnavailable = false;
 		debounceTimer = setTimeout(async () => {
 			try {
 				const q = await quoteSellRwt(amt, DEFAULT_SLIPPAGE_BPS);
@@ -87,7 +95,17 @@
 			} catch (e) {
 				if (token !== quoteToken) return;
 				quote = null;
-				quoteError = e instanceof Error ? e.message : 'Failed to fetch quote';
+				// The pool having no USDC to pay out is a calm, expected state — show
+				// the informational banner (NOT the red error) and hide the raw SDK
+				// string. Any other error keeps the existing red `tx-error` behavior.
+				if (
+					e instanceof MeteoraError &&
+					(e.kind === 'insufficient-liquidity' || e.kind === 'unavailable')
+				) {
+					sellUnavailable = true;
+				} else {
+					quoteError = e instanceof Error ? e.message : 'Failed to fetch quote';
+				}
 			} finally {
 				if (token === quoteToken) quoting = false;
 			}
@@ -101,6 +119,7 @@
 		quote = null;
 		quoting = false;
 		quoteError = null;
+		sellUnavailable = false;
 	}
 
 	function handleClose(): void {
@@ -150,7 +169,22 @@
 			{error}
 		/>
 
-		{#if belowBookNav}
+		{#if sellUnavailable}
+			<!--
+				Calm, informational state — the pool has no USDC to pay out yet, so a
+				sell can't be filled. This is NOT an error: once USDC liquidity is
+				added, selling works with no code change. Matches the BuyModal's
+				"pool unavailable" affordance style (neutral, no red), and hides the
+				raw SDK `SWAP_QUOTE_INSUFFICIENT_LIQUIDITY` string entirely.
+			-->
+			<div class="info" role="status">
+				<Info size={16} aria-hidden="true" />
+				<span>
+					Selling RWT is temporarily unavailable — the pool has no USDC liquidity yet.
+					You can still buy RWT.
+				</span>
+			</div>
+		{:else if belowBookNav}
 			<div class="warn" role="alert">
 				<AlertTriangle size={16} aria-hidden="true" />
 				<span>
@@ -206,7 +240,15 @@
 			<button class="btn ghost" type="button" onclick={handleClose} disabled={status === 'submitting'}>
 				Cancel
 			</button>
-			<button class="btn primary" type="button" onclick={confirm} disabled={!canSubmit}>
+			<button
+				class="btn primary"
+				type="button"
+				onclick={confirm}
+				disabled={!canSubmit}
+				title={sellUnavailable
+					? 'Selling is unavailable until the pool has USDC liquidity'
+					: undefined}
+			>
 				{status === 'submitting' ? 'Confirming…' : quoting ? 'Quoting…' : 'Confirm Sell'}
 			</button>
 		</div>
@@ -238,6 +280,30 @@
 		flex-shrink: 0;
 		margin-top: 2px;
 		color: var(--color-warning);
+	}
+
+	/*
+	 * Calm informational notice — same shape as `.warn` but neutral (no red/orange
+	 * alarm). Left-border in the info accent and a muted inset background signal
+	 * "heads up, not an error", matching the BuyModal's "pool unavailable" tone.
+	 */
+	.info {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+		font-size: var(--text-sm);
+		color: var(--color-text);
+		background: var(--color-info-tint);
+		border: 1px solid var(--color-border);
+		border-left: 2px solid var(--color-info);
+		border-radius: var(--radius-md);
+	}
+
+	.info :global(svg) {
+		flex-shrink: 0;
+		margin-top: 2px;
+		color: var(--color-info);
 	}
 
 	.tx-error {

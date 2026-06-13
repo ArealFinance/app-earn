@@ -46,6 +46,60 @@ import {
 } from './config';
 import type { SendFn } from './tx';
 
+// ── Typed Meteora error ─────────────────────────────────────────────────────────
+
+/**
+ * Discriminable Meteora error so the swap UI can branch on a *known* condition
+ * instead of stringifying a raw SDK throw. Mirrors the `FaucetError` pattern
+ * (a `kind` discriminant the component checks via `instanceof`).
+ *
+ *   - `insufficient-liquidity` — the SDK's `SWAP_QUOTE_INSUFFICIENT_LIQUIDITY`:
+ *     the out side of the swap has nothing to pay out (e.g. the mainnet pool
+ *     launches one-sided, 5000 RWT / 0 USDC, so a RWT→USDC sell can't be
+ *     filled). This is a LIQUIDITY STATE, not a bug — once USDC liquidity is
+ *     added the same quote succeeds with NO code change. The UI surfaces it as a
+ *     calm "selling temporarily unavailable" notice, not a hard error.
+ *   - `unavailable` — the pool itself can't be reached/used (reserved; e.g. an
+ *     unconfigured pool). Surfaced the same calm way.
+ */
+export type MeteoraErrorKind = 'insufficient-liquidity' | 'unavailable';
+
+export class MeteoraError extends Error {
+	readonly kind: MeteoraErrorKind;
+
+	constructor(kind: MeteoraErrorKind, message: string) {
+		super(message);
+		this.name = 'MeteoraError';
+		this.kind = kind;
+	}
+}
+
+/**
+ * Recognizes the DLMM SDK's "nothing to give out" signal. The SDK throws a
+ * plain `Error` whose message is the literal string `SWAP_QUOTE_INSUFFICIENT_LIQUIDITY`
+ * (it is not a typed/coded error object), so we match on the message text
+ * case-insensitively and tolerate any wrapping (`includes`, not `===`). This is
+ * the precise condition that fires on the one-sided mainnet pool today.
+ */
+function isInsufficientLiquidity(err: unknown): boolean {
+	const msg =
+		err instanceof Error
+			? err.message
+			: typeof err === 'string'
+				? err
+				: (() => {
+						// Some SDK paths reject with `{ message }`-shaped objects rather
+						// than an Error instance — read a `message`/`code` field if present.
+						if (err && typeof err === 'object') {
+							const o = err as { message?: unknown; code?: unknown };
+							if (typeof o.message === 'string') return o.message;
+							if (typeof o.code === 'string') return o.code;
+						}
+						return '';
+					})();
+	return msg.toUpperCase().includes('SWAP_QUOTE_INSUFFICIENT_LIQUIDITY');
+}
+
 // ── Pool handle (cached) ──────────────────────────────────────────────────────
 
 /**
@@ -168,9 +222,12 @@ export interface SellQuote {
  * NOTE on liquidity: the mainnet pool launches one-sided (RWT only, 0 USDC).
  * With no USDC on the out side, `swapQuote` throws
  * `SWAP_QUOTE_INSUFFICIENT_LIQUIDITY` (the SDK's "nothing to give out" signal,
- * verified live) — that is a liquidity state, not an orientation bug, and the
- * swap surface already treats a rejected quote as "market unavailable". Once
- * USDC liquidity is added, the same code quotes a real USDC-out.
+ * verified live) — that is a liquidity state, not an orientation bug. We catch
+ * exactly that signal and re-throw it as a typed `MeteoraError`
+ * (`kind: 'insufficient-liquidity'`) so the UI can show a calm "selling
+ * temporarily unavailable" notice instead of leaking the raw SDK string. Any
+ * other/unknown error flows through unchanged. Once USDC liquidity is added,
+ * the same code quotes a real USDC-out with NO change here.
  */
 export async function quoteSellRwt(
 	rwtAmount: number,
@@ -182,7 +239,21 @@ export async function quoteSellRwt(
 	const inAmount = toBaseUnitsBN(rwtAmount);
 	const swapForY = rwtIsTokenX(pool); // sell: RWT-leg in → swapForY when RWT is X
 	const binArrays = await pool.getBinArrayForSwap(swapForY);
-	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
+	// `swapQuote` throws SWAP_QUOTE_INSUFFICIENT_LIQUIDITY when the out (USDC) side
+	// is empty. Convert ONLY that signal into a typed MeteoraError; rethrow the
+	// rest verbatim so genuine failures keep their original message/stack.
+	let quote: ReturnType<typeof pool.swapQuote>;
+	try {
+		quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
+	} catch (err) {
+		if (isInsufficientLiquidity(err)) {
+			throw new MeteoraError(
+				'insufficient-liquidity',
+				'The RWT/USDC pool has no USDC liquidity yet, so RWT cannot be sold right now.'
+			);
+		}
+		throw err;
+	}
 
 	const usdcOut = fromBaseUnits(quote.outAmount);
 	const minOut = fromBaseUnits(quote.minOutAmount);
