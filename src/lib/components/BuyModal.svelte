@@ -2,7 +2,12 @@
 	/**
 	 * Buy RWT — Mint or DEX (live devnet).
 	 *
-	 *   Mint: Book NAV × (1 + 1% fee). Deposits USDC, mints earn-RWT at Book NAV.
+	 *   Mint: the typed amount is the TOTAL USDC the user spends. The contract
+	 *         charges the mint fee ON TOP of the deposit body, so we solve a body
+	 *         such that body + fee <= total and price RWT at Book NAV. The preview
+	 *         here and the transaction share `quoteMint` over LIVE integer inputs
+	 *         (scaled NAV + on-chain fee bps), so the displayed numbers equal the
+	 *         on-chain outcome to the lamport.
 	 *   DEX:  USDC → RWT swap against the live Meteora DLMM pool (a REAL quote +
 	 *         swap transaction; mirrors SellModal).
 	 *
@@ -17,9 +22,18 @@
 	import BottomSheet from './BottomSheet.svelte';
 	import AmountInput from './AmountInput.svelte';
 	import FaucetButton from './FaucetButton.svelte';
-	import { mintPreview, MINT_FEE_RATE } from '$lib/earn/mock';
-	import { MIN_MINT_AMOUNT_UI, DEFAULT_SLIPPAGE_BPS } from '$lib/chain/config';
+	import {
+		MIN_MINT_AMOUNT_UI,
+		DEFAULT_SLIPPAGE_BPS,
+		MINT_FEE_BPS,
+		INITIAL_NAV,
+		TOKEN_DECIMALS,
+		NAV_SCALE
+	} from '$lib/chain/config';
 	import { quoteBuyRwt, type BuyQuote } from '$lib/chain/meteora';
+	import { fetchMintQuoteInputs } from '$lib/chain/reads';
+	import { quoteMint, type MintQuoteInputs } from '$lib/chain/mint-quote';
+	import { toBaseUnits } from '$lib/chain/tx';
 	import { formatTokenAmount, formatUsd, formatNav } from '$lib/utils/format';
 	import { wallet } from '$lib/wallet/store';
 
@@ -27,11 +41,10 @@
 		open: boolean;
 		/** Market price (USDC per RWT) from the pool; null if unread. */
 		marketPrice: number | null;
-		bookNav: number;
 		onClose: () => void;
 	}
 
-	let { open, marketPrice, bookNav, onClose }: Props = $props();
+	let { open, marketPrice, onClose }: Props = $props();
 
 	type Status = 'idle' | 'submitting' | 'success';
 	type Path = 'mint' | 'dex';
@@ -60,16 +73,65 @@
 		return Number.isFinite(n) && n > 0 ? n : 0;
 	});
 
-	const mintQuote = $derived(mintPreview(amount, bookNav));
+	// Live integer mint inputs (scaled NAV + on-chain fee bps), read from the same
+	// EarnConfig Book NAV derives from. Refreshed when the modal opens so the
+	// preview floors EXACTLY like the contract. Fallback ($1.00 NAV / 1% fee)
+	// matches fetchMintQuoteInputs' own fallback and the empty on-chain state.
+	let mintInputs = $state<MintQuoteInputs>({ navScaled: INITIAL_NAV, feeBps: MINT_FEE_BPS });
+
+	$effect(() => {
+		if (!open) return;
+		let cancelled = false;
+		fetchMintQuoteInputs()
+			.then((inputs) => {
+				if (!cancelled) mintInputs = inputs;
+			})
+			.catch(() => {
+				/* keep the safe fallback on RPC failure */
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// Fee rate (fraction) from the LIVE on-chain fee bps — drives the fee-row label.
+	const mintFeeRate = $derived(Number(mintInputs.feeBps) / 10_000);
+
+	// Integer mint quote: the user's input is the TOTAL they spend (T). `quoteMint`
+	// solves the body so body + fee <= T, then floors fee / rwtOut / minRwtOut
+	// IDENTICALLY to the contract. The same helper drives buildMintRwt, so the
+	// displayed numbers equal the on-chain outcome.
+	const mintQuote = $derived.by(() => {
+		const total = toBaseUnits(amount);
+		const q = quoteMint(total, mintInputs, BigInt(DEFAULT_SLIPPAGE_BPS));
+		const scale = 10 ** TOKEN_DECIMALS;
+		const rwtOut = Number(q.rwtOut) / scale;
+		const fee = Number(q.fee) / scale;
+		const totalSpent = Number(q.totalSpent) / scale;
+		// Per-RWT price the user effectively pays = totalSpent / rwtOut (USDC/RWT).
+		// Falls back to the gross NAV×(1+fee) when rwtOut is 0 (amount 0) so the
+		// card still shows an indicative price.
+		const navUsd = Number(mintInputs.navScaled) / Number(NAV_SCALE);
+		const price = rwtOut > 0 ? totalSpent / rwtOut : navUsd * (1 + mintFeeRate);
+		// Body (base units) is what the contract receives as `usdc_amount` and what
+		// its anti-dust floor (MIN_MINT_AMOUNT) is checked against — surface it so
+		// the below-min gate matches the on-chain check, not the typed total.
+		return { rwtOut, fee, totalSpent, price, bodyBase: q.body };
+	});
 
 	const overBalance = $derived(amount > usdc);
-	// Below-min gates the Mint path only (the DEX swap has no mint floor).
-	const belowMin = $derived(amount > 0 && amount < MIN_MINT_AMOUNT_UI);
+	// Below-min gates the Mint path only (the DEX swap has no mint floor). The
+	// contract floors the BODY (usdc_amount), not the typed total — and the body
+	// is total / (1 + fee), so a typed $1.00 would mint a body below the $1.00
+	// floor and be rejected on-chain. Gate on the body to keep front == fact.
+	const minBodyBase = $derived(BigInt(Math.round(MIN_MINT_AMOUNT_UI * 10 ** TOKEN_DECIMALS)));
+	const belowMin = $derived(amount > 0 && mintQuote.bodyBase < minBodyBase);
+	const minTotalUi = $derived(MIN_MINT_AMOUNT_UI * (1 + mintFeeRate));
 	const error = $derived(
 		overBalance
 			? 'Amount exceeds balance'
 			: belowMin
-				? `Minimum deposit is ${MIN_MINT_AMOUNT_UI} USDC`
+				? `Minimum spend is ${minTotalUi.toFixed(2)} USDC`
 				: null
 	);
 
@@ -348,12 +410,16 @@
 				</div>
 			{:else}
 				<div class="preview-row">
-					<span>Mint fee ({(MINT_FEE_RATE * 100).toFixed(0)}%)</span>
+					<span>Mint fee ({(mintFeeRate * 100).toFixed(0)}%)</span>
 					<span class="tabular">−{formatUsd(mintQuote.fee)}</span>
 				</div>
 				<div class="preview-row">
-					<span>Price (Book NAV +1%)</span>
+					<span>Price (Book NAV +{(mintFeeRate * 100).toFixed(0)}%)</span>
 					<span class="tabular">{formatNav(mintQuote.price)}</span>
+				</div>
+				<div class="preview-row">
+					<span>You pay</span>
+					<span class="tabular">{formatUsd(mintQuote.totalSpent)}</span>
 				</div>
 				<div class="preview-row total">
 					<span>You receive</span>

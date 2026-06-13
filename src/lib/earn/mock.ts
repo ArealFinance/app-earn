@@ -18,30 +18,15 @@ import type { StakeQuote, UnstakeQuote } from './types';
 
 // ── On-chain-matching constants (NOT placeholders) ───────────────────────────
 
-/** Mint protocol commission — 1% on top of the basket body (matches on-chain). */
-export const MINT_FEE_RATE = 0.01;
-
 /** Unstake cooldown — 21 days, in milliseconds (matches on-chain COOLDOWN_SECONDS). */
 export const COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
 
 // ── Quote preview helpers (pure math over REAL on-chain inputs) ───────────────
-
-/**
- * Mint preview — Book NAV × (1 + 1% fee). `bookNav` is the REAL on-chain NAV.
- * Returns the RWT received and the fee charged (USDC).
- */
-export function mintPreview(usdc: number, bookNav: number): {
-	rwtOut: number;
-	price: number;
-	fee: number;
-} {
-	const spend = Math.max(0, Number.isFinite(usdc) ? usdc : 0);
-	const price = bookNav * (1 + MINT_FEE_RATE);
-	const rwtOut = price > 0 ? spend / price : 0;
-	const body = rwtOut * bookNav;
-	const fee = body * MINT_FEE_RATE;
-	return { rwtOut, price, fee };
-}
+//
+// NOTE: the mint preview is NOT here. The mint path needs the SAME integer
+// flooring as the contract (`mul_div_u64` / u128 truncation), so its quote lives
+// in `$lib/chain/mint-quote` (`quoteMint`) over live integer inputs, shared with
+// the transaction builder so the preview equals the on-chain outcome exactly.
 
 /**
  * Stake preview — RWT → stRWT at the REAL on-chain rate (stRWT_out = RWT / rate).

@@ -43,12 +43,11 @@ import {
 	TOKEN_PROGRAM_ID,
 	UNSTAKE_SEED,
 	TOKEN_DECIMALS,
-	MINT_FEE_BPS,
-	BPS_DENOMINATOR,
-	NAV_SCALE
+	DEFAULT_SLIPPAGE_BPS
 } from './config';
 import { instructionDiscriminator } from './discriminator';
-import { fetchBookNav, fetchStrwtRate } from './reads';
+import { fetchMintQuoteInputs, fetchStrwtRate } from './reads';
+import { quoteMint } from './mint-quote';
 
 const SYSTEM_PROGRAM_ID = new PublicKey('11111111111111111111111111111111');
 
@@ -132,21 +131,27 @@ async function finalize(tx: Transaction, feePayer: PublicKey): Promise<Transacti
 //   5 basket_vault        mut
 //   6 dao_fee_destination mut
 //   7 token_program
+//
+// IMPORTANT — input model: `usdcAmount` is the TOTAL the user spends (`T`), NOT
+// the deposit body. The contract charges the 1% fee ON TOP of the body it
+// receives as `usdc_amount`, so we solve for a body such that body + fee <= T
+// and send THAT body (not T). The body/fee/rwt_out/min_rwt_out math lives in the
+// shared `quoteMint` helper so the modal preview and this transaction floor
+// identically and the displayed numbers equal the on-chain outcome.
 
 export async function buildMintRwt(
 	owner: PublicKey,
 	usdcAmount: number,
 	send: SendFn
 ): Promise<string> {
-	const usdcBase = toBaseUnits(usdcAmount);
+	const totalBase = toBaseUnits(usdcAmount);
 
-	// Quote min_rwt_out client-side: rwt_out = usdc × NAV_SCALE / nav.
-	// We re-derive NAV here to set a non-zero slippage floor (contract rejects
-	// min_rwt_out == 0). With a 0.5% buffer this tolerates a NAV tick.
-	const navUsd = await fetchBookNav();
-	const navScaled = BigInt(Math.max(1, Math.round(navUsd * 10 ** TOKEN_DECIMALS)));
-	const rwtOut = (usdcBase * NAV_SCALE) / navScaled;
-	const minRwtOut = (rwtOut * 995n) / 1000n; // 0.5% slippage floor
+	// Live integer inputs (scaled NAV + on-chain fee bps) from the SAME config
+	// read Book NAV uses. The fee is read live — never hardcoded. The shared
+	// helper converts the total into the body and floors min_rwt_out (contract
+	// rejects min_rwt_out == 0; the slippage buffer tolerates a NAV/fee tick).
+	const inputs = await fetchMintQuoteInputs();
+	const { body, minRwtOut } = quoteMint(totalBase, inputs, BigInt(DEFAULT_SLIPPAGE_BPS));
 	const minRwtOutSafe = minRwtOut > 0n ? minRwtOut : 1n;
 
 	const userUsdc = getAssociatedTokenAddressSync(USDC_MINT, owner);
@@ -159,7 +164,8 @@ export async function buildMintRwt(
 		createAssociatedTokenAccountIdempotentInstruction(owner, userRwt, owner, RWT_MINT)
 	);
 
-	const data = await buildIxData('mint_rwt', [usdcBase, minRwtOutSafe]);
+	// Send the BODY (not the typed total) as the contract's `usdc_amount`.
+	const data = await buildIxData('mint_rwt', [body, minRwtOutSafe]);
 	tx.add(
 		new TransactionInstruction({
 			programId: EARN_PROGRAM_ID,
@@ -179,11 +185,6 @@ export async function buildMintRwt(
 
 	await finalize(tx, owner);
 	return send(tx);
-}
-
-/** Client-side preview of the mint fee (1% of body), in USDC. */
-export function previewMintFee(usdcAmount: number): number {
-	return (usdcAmount * Number(MINT_FEE_BPS)) / Number(BPS_DENOMINATOR);
 }
 
 // ── stake(rwt_amount, min_strwt_out) ─────────────────────────────────────────────

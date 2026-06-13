@@ -53,9 +53,20 @@ import {
 	RATE_SCALE,
 	VIRTUAL_ASSETS,
 	VIRTUAL_SHARES,
-	TOKEN_DECIMALS
+	TOKEN_DECIMALS,
+	MINT_FEE_BPS
 } from './config';
 import type { PendingUnstake } from '$lib/earn/types';
+import type { MintQuoteInputs } from './mint-quote';
+
+/**
+ * EarnConfig byte offset of `mint_fee_bps` (u16). The #[account] struct is
+ * repr(C, packed) with an 8-byte discriminator prefix:
+ *   disc(8) + total_invested_capital(16) + authority(32) + pending_authority(32)
+ *   + has_pending(1) = 89  → mint_fee_bps starts at 89.
+ * (Cross-checked against contracts/earn/src/state.rs running offsets.)
+ */
+const EARN_CONFIG_MINT_FEE_BPS_OFFSET = 89;
 
 // ── Little-endian integer decoders ──────────────────────────────────────────────
 
@@ -73,6 +84,10 @@ function readU128LE(buf: Uint8Array, offset: number): bigint {
 		value |= BigInt(buf[offset + i]) << (8n * BigInt(i));
 	}
 	return value;
+}
+
+function readU16LE(buf: Uint8Array, offset: number): number {
+	return buf[offset] | (buf[offset + 1] << 8);
 }
 
 function readI64LE(buf: Uint8Array, offset: number): bigint {
@@ -121,6 +136,31 @@ export async function fetchBookNav(): Promise<number> {
 	const capital = readU128LE(configInfo.data, 8);
 	const navScaled = supply === 0n ? INITIAL_NAV : (capital * NAV_SCALE) / supply;
 	return fromScaled(navScaled);
+}
+
+/**
+ * Integer mint-quote inputs read LIVE from the same EarnConfig (+ RWT supply)
+ * that Book NAV is derived from: the scaled NAV and the on-chain
+ * `mint_fee_bps`. These feed `quoteMint` so the preview and the transaction use
+ * the identical flooring as the contract. Never hardcodes the fee — it is read
+ * from the live config (falling back to MINT_FEE_BPS only if the account is
+ * unreadable, mirroring fetchBookNav's INITIAL_NAV fallback).
+ */
+export async function fetchMintQuoteInputs(): Promise<MintQuoteInputs> {
+	const [configInfo, supply] = await Promise.all([
+		connection.getAccountInfo(EARN_CONFIG_PDA, COMMITMENT),
+		readMintSupply(RWT_MINT)
+	]);
+
+	if (!configInfo) {
+		return { navScaled: INITIAL_NAV, feeBps: MINT_FEE_BPS };
+	}
+
+	const capital = readU128LE(configInfo.data, 8);
+	const navScaled = supply === 0n ? INITIAL_NAV : (capital * NAV_SCALE) / supply;
+	const feeBps = BigInt(readU16LE(configInfo.data, EARN_CONFIG_MINT_FEE_BPS_OFFSET));
+
+	return { navScaled, feeBps };
 }
 
 // ── stRWT → RWT rate ─────────────────────────────────────────────────────────────
