@@ -98,9 +98,11 @@ const PROFILES: Record<AppNetwork, NetworkProfile> = {
 		// placeholder so the export shape holds — any consumer that needs the real
 		// pool vault reads it from StakingConfig at runtime (reads.ts).
 		poolVault: '9tEKvDwkqkveBvmQfEzgPKWSNCDTGSSqYz4ZE6pP5DGY',
-		// dao_fee_destination (1% mint commission ATA) — read from EarnConfig on
-		// chain; not separately published, placeholder = treasury/authority vault.
-		daoFeeDestination: 'ApDQBVjwy47EAffSehF8k18orUbJaLSURVEdx95bV8oA'
+		// dao_fee_destination — the on-chain EarnConfig.dao_fee_destination USDC
+		// token account (owned by the SPL Token program), the recipient of the 1%
+		// mint fee. Must match the live EarnConfig or the earn program's owner-check
+		// on dao_fee_destination rejects the mint.
+		daoFeeDestination: '68AHfVCW4CJGCKxfUdLgj3WKe8qF8eSztmEd7VnPFYkg'
 	}
 };
 
