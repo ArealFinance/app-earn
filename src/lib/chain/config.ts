@@ -93,11 +93,12 @@ const PROFILES: Record<AppNetwork, NetworkProfile> = {
 			'9tEKvDwkqkveBvmQfEzgPKWSNCDTGSSqYz4ZE6pP5DGY'
 		),
 		basketVault: 'Ew8GFA29zsUXzf8dmDmesbHVCSfXVAVnPWYtr9nF3sqo',
-		// poolVault (StakingConfig-PDA-owned RWT ATA) is derived on-chain at init;
-		// not yet published for mainnet. Fall back to the StakingConfig PDA as a
-		// placeholder so the export shape holds — any consumer that needs the real
-		// pool vault reads it from StakingConfig at runtime (reads.ts).
-		poolVault: '9tEKvDwkqkveBvmQfEzgPKWSNCDTGSSqYz4ZE6pP5DGY',
+		// poolVault — the on-chain StakingConfig.pool_vault RWT token account
+		// (StakingConfig-PDA-owned, mint = RWTeFt9…), holding active + reserved RWT.
+		// Sourced from StakingConfig at byte offset 169. The stake instruction marks
+		// pool_vault writable, so this MUST be the real token account (not the
+		// StakingConfig PDA) or Arlex rejects it ("'pool_vault' must be writable").
+		poolVault: 'WtXa3NyQaiYdD6hJrDGkHcYyMKv722LqmPXij8hh2BT',
 		// dao_fee_destination — the on-chain EarnConfig.dao_fee_destination USDC
 		// token account (owned by the SPL Token program), the recipient of the 1%
 		// mint fee. Must match the live EarnConfig or the earn program's owner-check
