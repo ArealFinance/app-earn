@@ -220,11 +220,18 @@ export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9
 // IDENTICAL on devnet and mainnet, so only CLUSTER above changes between
 // environments.
 //
-//   tokenX = USDC (6 dec)  → the quote leg
-//   tokenY = RWT  (6 dec)  → the base leg
-//
-// A RWT→USDC sell is therefore a Y→X swap (swapForY = false). The active bin's
-// price (X-per-Y) is USDC per RWT — the market price we surface.
+// TOKEN ORIENTATION IS NETWORK-DEPENDENT — do NOT hardcode it here. The two
+// live pools have OPPOSITE token orders:
+//   devnet  pool (5i3ipA3…): tokenX = USDC, tokenY = RWT
+//   mainnet pool (Ca57q4Dh…): tokenX = RWT,  tokenY = USDC
+// Because the order flips per network, the correct swap direction and price
+// orientation can only be known by reading the pool's actual tokenX/tokenY
+// mints at runtime. `meteora.ts` does exactly that (see `rwtIsX` there): it
+// derives a single `rwtIsX` boolean from the live pool after `DLMM.create`,
+// and keys swap direction (`swapForY`), price inversion, and leg selection off
+// it. The `METEORA_TOKEN_X/Y` exports below are NOT a source of truth for
+// orientation — they are only the candidate mint pair (in no fixed X/Y order);
+// the runtime pool is authoritative.
 //
 // C1 (LAUNCH): the mainnet RWT/USDC pool DOES NOT EXIST yet — it is created at
 // launch. There is NO hardcoded mainnet pool address; it is sourced from
@@ -262,9 +269,16 @@ export const HAS_METEORA_POOL = METEORA_POOL_RAW !== null;
  * `HAS_METEORA_POOL` before passing it to `DLMM.create`.
  */
 export const METEORA_POOL = new PublicKey(METEORA_POOL_RAW ?? PublicKey.default.toBase58());
-/** Pool tokenX — USDC, the quote leg. (Same as USDC_MINT; pinned for clarity.) */
+//
+// NOTE: the names below are LEGACY and DO NOT imply a fixed X/Y orientation —
+// the live pool's real order is network-dependent and read at runtime in
+// `meteora.ts` (see the orientation note above). They are kept only because
+// other modules import these symbols; each is just an alias of the underlying
+// mint. `meteora.ts` no longer relies on them for swap-direction or pricing —
+// it picks the in/out mints from the pool's actual `tokenX/tokenY`.
+/** USDC mint (alias of USDC_MINT). NOT necessarily the pool's tokenX. */
 export const METEORA_TOKEN_X = USDC_MINT;
-/** Pool tokenY — earn-RWT, the base leg. (Same as RWT_MINT; pinned for clarity.) */
+/** earn-RWT mint (alias of RWT_MINT). NOT necessarily the pool's tokenY. */
 export const METEORA_TOKEN_Y = RWT_MINT;
 /** Pool bin step (25 bps) and base fee (30 bps) — for reference / display. */
 export const METEORA_BIN_STEP_BPS = 25;

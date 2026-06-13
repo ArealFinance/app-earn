@@ -5,12 +5,21 @@
  * on-chain DLMM program ID is identical on devnet and mainnet, so the SAME code
  * ships to both — only `CLUSTER` (in `./config`) differs.
  *
- * Token orientation (see config):
- *   tokenX = USDC (6 dec)  — quote leg
- *   tokenY = RWT  (6 dec)  — base leg
- *
- * A RWT → USDC **sell** is a Y → X swap, i.e. `swapForY = false`. The active
- * bin's price is X-per-Y = USDC per RWT, which is the market price we surface.
+ * TOKEN ORIENTATION IS DERIVED AT RUNTIME, NOT HARDCODED. The two live pools
+ * have OPPOSITE token orders:
+ *   devnet  pool: tokenX = USDC, tokenY = RWT
+ *   mainnet pool: tokenX = RWT,  tokenY = USDC
+ * so a fixed `tokenX = USDC` assumption is wrong on mainnet. Instead, after
+ * `DLMM.create` we read the pool's ACTUAL mints (`dlmmPool.tokenX.publicKey` /
+ * `dlmmPool.tokenY.publicKey`) and compute one boolean `rwtIsX = (tokenX is the
+ * RWT mint)`. Everything orientation-sensitive keys off `rwtIsX`:
+ *   - Swap direction: in DLMM `swapForY = true` means input X, output Y. A
+ *     RWT→USDC **sell** sends the RWT leg in, so `swapForY = rwtIsX`. A
+ *     USDC→RWT **buy** is the inverse, `swapForY = !rwtIsX`.
+ *   - Price: `getActiveBin().pricePerToken` is Y-per-X (price of tokenX in
+ *     tokenY), decimal-adjusted. If `rwtIsX` it is already USDC-per-RWT (no
+ *     inversion); if `!rwtIsX` it is RWT-per-USDC and must be inverted (1/p).
+ *   - In/out mints for `pool.swap`: chosen from the pool's real tokenX/tokenY.
  *
  * Reads (price + quote) need no wallet — `DLMM.create` builds a read-only
  * anchor program from just the connection. The sell transaction returned by
@@ -31,8 +40,7 @@ import {
 	CLUSTER,
 	METEORA_POOL,
 	HAS_METEORA_POOL,
-	METEORA_TOKEN_X,
-	METEORA_TOKEN_Y,
+	RWT_MINT,
 	TOKEN_DECIMALS,
 	DEFAULT_SLIPPAGE_BPS
 } from './config';
@@ -67,6 +75,22 @@ async function getPool(): Promise<DLMM> {
 	return poolPromise;
 }
 
+// ── Orientation (RWT = tokenX?) — derived from the live pool ────────────────────
+
+/**
+ * Whether the RWT mint is the pool's tokenX (vs tokenY). This is the single
+ * source of truth for swap direction and price orientation, read from the LIVE
+ * pool rather than hardcoded — devnet has tokenX = USDC (rwtIsX = false), mainnet
+ * has tokenX = RWT (rwtIsX = true).
+ *
+ * `dlmmPool.tokenX.publicKey` is the on-chain `lbPair.tokenXMint` (the SDK
+ * populates it directly from the LB-pair account; `dlmmPool.lbPair.tokenXMint`
+ * is equivalent). We compare against `RWT_MINT` from config.
+ */
+function rwtIsTokenX(pool: DLMM): boolean {
+	return pool.tokenX.publicKey.equals(RWT_MINT);
+}
+
 // ── Scaling helpers ────────────────────────────────────────────────────────────
 
 /** UI token amount → base units (u64) as a BN. Rounds away float dust. */
@@ -84,12 +108,15 @@ function fromBaseUnits(base: BN): number {
 /**
  * Current market price of RWT in USDC, read from the pool's active bin.
  *
- * IMPORTANT orientation note (verified against live execution):
- * `getActiveBin().pricePerToken` for THIS pool is the decimal price of tokenX
- * (USDC) expressed in tokenY (RWT) — i.e. RWT-per-USDC (~1.0356), the INVERSE
- * of what we want. Cross-checked both ways: selling 100 RWT yields ~96 USDC and
- * buying RWT with 100 USDC yields ~103 RWT, both implying ~$0.9657 per RWT =
- * 1 / pricePerToken. So the USDC-per-RWT market price is `1 / pricePerToken`.
+ * ORIENTATION (derived from the live pool, not hardcoded):
+ * `getActiveBin().pricePerToken` is the decimal price of tokenX expressed in
+ * tokenY (Y-per-X), already decimal-adjusted by the SDK.
+ *   - If RWT is tokenX (mainnet, `rwtIsX`): pricePerToken is USDC-per-RWT
+ *     directly → use it as-is, NO inversion.
+ *   - If USDC is tokenX (devnet, `!rwtIsX`): pricePerToken is RWT-per-USDC →
+ *     invert (`1 / p`) to get USDC-per-RWT.
+ * This conditional replaces the old unconditional `1 / pricePerToken`, which was
+ * correct ONLY for the devnet (USDC = tokenX) order and inverted on mainnet.
  *
  * Returns `null` if the pool can't be read (keeps the UI's "—" placeholder
  * honest rather than crashing).
@@ -98,10 +125,12 @@ export async function fetchMarketPrice(): Promise<number | null> {
 	try {
 		const pool = await getPool();
 		await pool.refetchStates();
+		const rwtIsX = rwtIsTokenX(pool);
 		const activeBin = await pool.getActiveBin();
-		const rwtPerUsdc = Number(activeBin.pricePerToken);
-		if (!Number.isFinite(rwtPerUsdc) || rwtPerUsdc <= 0) return null;
-		const usdcPerRwt = 1 / rwtPerUsdc; // invert to USDC-per-RWT
+		const priceYperX = Number(activeBin.pricePerToken); // tokenY per tokenX
+		if (!Number.isFinite(priceYperX) || priceYperX <= 0) return null;
+		// rwtIsX → priceYperX is already USDC-per-RWT; else invert RWT-per-USDC.
+		const usdcPerRwt = rwtIsX ? priceYperX : 1 / priceYperX;
 		return Number.isFinite(usdcPerRwt) && usdcPerRwt > 0 ? usdcPerRwt : null;
 	} catch {
 		return null;
@@ -124,12 +153,24 @@ export interface SellQuote {
 }
 
 /**
- * Quotes a RWT → USDC sell against the live pool (Y → X, `swapForY = false`).
+ * Quotes a RWT → USDC sell against the live pool.
+ *
+ * Direction: a sell sends the RWT leg in. In DLMM `swapForY = true` means input
+ * tokenX → output tokenY, so `swapForY = rwtIsX` (true when RWT is tokenX, i.e.
+ * mainnet; false on devnet where RWT is tokenY). This is the orientation-aware
+ * replacement for the old fixed `swapForY = false`.
  *
  * `pool.swapQuote(inAmount, swapForY, allowedSlippage, binArrays)` returns the
- * out amount, fee, price impact (a `Decimal`), and the slippage-adjusted
- * minimum. The DLMM fee is charged on the IN leg (RWT) for a Y→X swap; we
- * convert it to USDC at the effective price for display.
+ * out amount (USDC), fee, price impact (a `Decimal`), and the slippage-adjusted
+ * minimum. The DLMM fee is charged on the IN leg (RWT) regardless of X/Y order,
+ * so we re-value it in USDC at the effective price for display.
+ *
+ * NOTE on liquidity: the mainnet pool launches one-sided (RWT only, 0 USDC).
+ * With no USDC on the out side, `swapQuote` throws
+ * `SWAP_QUOTE_INSUFFICIENT_LIQUIDITY` (the SDK's "nothing to give out" signal,
+ * verified live) — that is a liquidity state, not an orientation bug, and the
+ * swap surface already treats a rejected quote as "market unavailable". Once
+ * USDC liquidity is added, the same code quotes a real USDC-out.
  */
 export async function quoteSellRwt(
 	rwtAmount: number,
@@ -139,7 +180,7 @@ export async function quoteSellRwt(
 	await pool.refetchStates();
 
 	const inAmount = toBaseUnitsBN(rwtAmount);
-	const swapForY = false; // RWT(Y) → USDC(X)
+	const swapForY = rwtIsTokenX(pool); // sell: RWT-leg in → swapForY when RWT is X
 	const binArrays = await pool.getBinArrayForSwap(swapForY);
 	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
 
@@ -148,7 +189,7 @@ export async function quoteSellRwt(
 	// priceImpact is a Decimal fraction (e.g. 0.0021 = 0.21%).
 	const priceImpactBps = Math.round(Number(quote.priceImpact.toString()) * 10_000);
 	const effectivePrice = rwtAmount > 0 ? usdcOut / rwtAmount : 0;
-	// Fee is denominated in the IN token (RWT) for a Y→X swap → value it in USDC.
+	// Fee is denominated in the IN token (RWT) on a sell → value it in USDC.
 	const feeRwt = fromBaseUnits(quote.fee);
 	const feeUsdc = feeRwt * effectivePrice;
 
@@ -173,13 +214,18 @@ export async function buildSellRwtTx(
 	await pool.refetchStates();
 
 	const inAmount = toBaseUnitsBN(rwtAmount);
-	const swapForY = false; // RWT(Y) → USDC(X)
+	const rwtIsX = rwtIsTokenX(pool);
+	const swapForY = rwtIsX; // sell: RWT-leg in → swapForY when RWT is X
 	const binArrays = await pool.getBinArrayForSwap(swapForY);
 	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
 
+	// In/out mints come from the LIVE pool. Sell = RWT in, USDC out: the RWT leg
+	// is tokenX when rwtIsX, else tokenY (and USDC is the other leg).
+	const rwtMint = rwtIsX ? pool.tokenX.publicKey : pool.tokenY.publicKey;
+	const usdcMint = rwtIsX ? pool.tokenY.publicKey : pool.tokenX.publicKey;
 	const swapTx: Transaction = await pool.swap({
-		inToken: METEORA_TOKEN_Y, // RWT in
-		outToken: METEORA_TOKEN_X, // USDC out
+		inToken: rwtMint, // RWT in
+		outToken: usdcMint, // USDC out
 		inAmount,
 		minOutAmount: quote.minOutAmount,
 		lbPair: pool.pubkey,
@@ -214,14 +260,17 @@ export interface BuyQuote {
 }
 
 /**
- * Quotes a USDC → RWT buy against the live pool (X → Y, `swapForY = true`).
+ * Quotes a USDC → RWT buy against the live pool.
  *
- * Mirror of `quoteSellRwt` with the swap direction flipped: USDC (tokenX) is the
- * IN leg, RWT (tokenY) is the OUT leg.
+ * Mirror of `quoteSellRwt` with the swap direction flipped: a buy sends the USDC
+ * leg in. It is the inverse of the sell, so `swapForY = !rwtIsX` (false on
+ * mainnet where RWT is tokenX, true on devnet where USDC is tokenX). This is the
+ * orientation-aware replacement for the old fixed `swapForY = true`.
  *
- * Unlike the sell quote, the DLMM fee is charged on the IN leg (USDC) for an
- * X→Y swap, so `feeUsdc = fromBaseUnits(quote.fee)` directly — NO multiply by
- * price (the fee is already denominated in USDC).
+ * The DLMM fee is charged on the IN leg (USDC) on a buy regardless of X/Y order,
+ * so `feeUsdc = fromBaseUnits(quote.fee)` directly — NO multiply by price (the
+ * fee is already denominated in USDC). This DIFFERS from the sell quote, where
+ * the IN token is RWT and the fee is re-valued in USDC.
  */
 export async function quoteBuyRwt(
 	usdcAmount: number,
@@ -231,7 +280,7 @@ export async function quoteBuyRwt(
 	await pool.refetchStates();
 
 	const inAmount = toBaseUnitsBN(usdcAmount);
-	const swapForY = true; // USDC(X) → RWT(Y)
+	const swapForY = !rwtIsTokenX(pool); // buy: USDC-leg in → inverse of sell
 	const binArrays = await pool.getBinArrayForSwap(swapForY);
 	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
 
@@ -273,13 +322,18 @@ export async function buildBuyRwtTx(
 	await pool.refetchStates();
 
 	const inAmount = toBaseUnitsBN(usdcAmount);
-	const swapForY = true; // USDC(X) → RWT(Y)
+	const rwtIsX = rwtIsTokenX(pool);
+	const swapForY = !rwtIsX; // buy: USDC-leg in → inverse of sell
 	const binArrays = await pool.getBinArrayForSwap(swapForY);
 	const quote = pool.swapQuote(inAmount, swapForY, new BN(slippageBps), binArrays);
 
+	// In/out mints come from the LIVE pool. Buy = USDC in, RWT out: the USDC leg
+	// is tokenY when rwtIsX (RWT is X), else tokenX (and RWT is the other leg).
+	const usdcMint = rwtIsX ? pool.tokenY.publicKey : pool.tokenX.publicKey;
+	const rwtMint = rwtIsX ? pool.tokenX.publicKey : pool.tokenY.publicKey;
 	const swapTx: Transaction = await pool.swap({
-		inToken: METEORA_TOKEN_X, // USDC in
-		outToken: METEORA_TOKEN_Y, // RWT out
+		inToken: usdcMint, // USDC in
+		outToken: rwtMint, // RWT out
 		inAmount,
 		minOutAmount: quote.minOutAmount,
 		lbPair: pool.pubkey,
