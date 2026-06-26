@@ -8,9 +8,15 @@
  * and switchable: set `VITE_NETWORK=mainnet` (and the launch-time pool address,
  * see METEORA_POOL below) to point the app at the mainnet deployment.
  *
- * No backend dependency: reads go straight to the public cluster RPC. The
- * public RPCs are rate-limited but fine for the V1 demo surface; override the
- * RPC URL per network via `VITE_RPC_URL` when a private endpoint is available.
+ * RPC transport: the shared `connection` uses a RESILIENT fetch (see rpc.ts).
+ * It prefers a PRIMARY endpoint and transparently falls back to the public
+ * cluster RPC on transport failure. Precedence (see the RPC section below):
+ *   1. `VITE_RPC_URL` set        → that URL is PRIMARY (operator override).
+ *   2. else `VITE_FAUCET_API_BASE` set → `${base}/rpc` backend proxy is PRIMARY.
+ *   3. else                      → public cluster RPC is PRIMARY (no fallback).
+ * In cases 1 and 2 the FALLBACK is always the public `NET.rpcUrl`. This keeps
+ * the Seeker APK + web app working with no client-side Helius key (the key lives
+ * server-side behind the proxy) while staying available if the proxy is down.
  *
  * Export shape is UNCHANGED across networks: program IDs / mints / vaults are
  * `PublicKey` instances, scaling constants are `bigint`. Consumers
@@ -19,6 +25,7 @@
  */
 
 import { Connection, PublicKey, type Cluster, type Commitment } from '@solana/web3.js';
+import { makeResilientFetch } from './rpc';
 
 // ── Network selection ──────────────────────────────────────────────────────────
 
@@ -119,9 +126,40 @@ const NET = PROFILES[NETWORK];
 
 // ── RPC ──────────────────────────────────────────────────────────────────────
 
-/** Cluster RPC. Override with a private endpoint via `VITE_RPC_URL`. */
-export const RPC_URL: string = (import.meta.env.VITE_RPC_URL as string) || NET.rpcUrl;
 export const COMMITMENT: Commitment = 'confirmed';
+
+/**
+ * Base URL for the backend API / RPC proxy (e.g. `https://api.areal.finance`).
+ * Empty string when unset. Defined here (above the faucet section that also
+ * exports it) because the RPC precedence below needs it. The proxy exposes a
+ * standard Solana JSON-RPC endpoint at `${FAUCET_API_BASE}/rpc`; the same base
+ * also serves the devnet faucet (see the Faucet section).
+ */
+export const FAUCET_API_BASE: string = import.meta.env.VITE_FAUCET_API_BASE ?? '';
+
+/** Operator RPC override (private endpoint). Empty/undefined when unset. */
+const RPC_URL_OVERRIDE: string = ((import.meta.env.VITE_RPC_URL as string) || '').trim();
+
+/** The backend JSON-RPC proxy URL, or '' when no backend base is configured. */
+const RPC_PROXY_URL: string = FAUCET_API_BASE ? `${FAUCET_API_BASE}/rpc` : '';
+
+/**
+ * PRIMARY RPC endpoint the `connection` talks to first. Precedence:
+ *   1. `VITE_RPC_URL`       — explicit operator override wins.
+ *   2. backend proxy        — `${FAUCET_API_BASE}/rpc` when a base is set.
+ *   3. public cluster RPC   — the default when neither is configured.
+ */
+export const RPC_URL: string = RPC_URL_OVERRIDE || RPC_PROXY_URL || NET.rpcUrl;
+
+/**
+ * FALLBACK RPC endpoint — used only when the PRIMARY fails at the transport
+ * level (network error / timeout, or 5xx/429 for idempotent reads). Always the
+ * public cluster RPC, EXCEPT when the public RPC is already the primary (cases
+ * where neither override nor proxy is set), in which case there is no distinct
+ * fallback and this is `null` (preserving the original single-endpoint
+ * behavior). See rpc.ts for the fallback gating (writes are never double-sent).
+ */
+export const RPC_URL_FALLBACK: string | null = RPC_URL === NET.rpcUrl ? null : NET.rpcUrl;
 
 /**
  * Cluster the deployment lives on. The ONLY value that differs devnet↔mainnet
@@ -130,8 +168,17 @@ export const COMMITMENT: Commitment = 'confirmed';
  */
 export const CLUSTER: Cluster = NET.cluster;
 
-/** Shared read-only connection. Reused across reads so we don't churn sockets. */
-export const connection = new Connection(RPC_URL, COMMITMENT);
+/**
+ * Shared connection. Reused across reads so we don't churn sockets. Built with a
+ * RESILIENT fetch: every JSON-RPC call hits `RPC_URL` first and transparently
+ * fails over to `RPC_URL_FALLBACK` on transport failure (never on a valid
+ * JSON-RPC error, and never double-sending a `sendTransaction`). The export
+ * shape is unchanged — all callers import the same `connection`.
+ */
+export const connection = new Connection(RPC_URL, {
+	commitment: COMMITMENT,
+	fetch: makeResilientFetch(RPC_URL_FALLBACK)
+});
 
 /**
  * True when the deployment targets devnet. Used to gate devnet-only affordances
@@ -142,18 +189,15 @@ export const IS_DEVNET = NETWORK === 'devnet';
 
 // ── Faucet (devnet-only, backend-served) ─────────────────────────────────────
 //
-// The faucet is the ONLY backend dependency in the app. Its base URL is injected
-// at build time via `VITE_FAUCET_API_BASE` (see .env.example). When unset the
-// faucet is treated as unavailable and the affordance stays hidden — the rest of
-// the app reads straight from RPC and is unaffected. (FaucetButton additionally
+// The faucet shares the backend base URL (`VITE_FAUCET_API_BASE`) injected at
+// build time (see .env.example). When the base is unset the faucet is treated as
+// unavailable and the affordance stays hidden — the rest of the app reads via
+// the resilient RPC transport and is unaffected. (FaucetButton additionally
 // gates on IS_DEVNET, so it never renders on mainnet regardless.)
-
-/**
- * Base URL for the faucet API (e.g. `https://api.areal.finance`). Empty string
- * when unset → callers treat the faucet as unavailable. Never hardcode the base
- * in components; always source it from here.
- */
-export const FAUCET_API_BASE: string = import.meta.env.VITE_FAUCET_API_BASE ?? '';
+//
+// NOTE: `FAUCET_API_BASE` itself is exported up in the RPC section, because the
+// RPC primary-precedence (proxy = `${FAUCET_API_BASE}/rpc`) depends on it. It is
+// the single backend base for both the RPC proxy and the faucet endpoint.
 
 // ── Program IDs ────────────────────────────────────────────────────────────────
 
