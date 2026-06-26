@@ -15,10 +15,22 @@
 
 import type { PublicKey, Transaction } from '@solana/web3.js';
 
-export type WalletProviderId = 'phantom' | 'solflare' | 'backpack';
+/**
+ * Wallet identity.
+ *   - `'phantom' | 'solflare' | 'backpack'` — injected BROWSER providers.
+ *   - `'mwa'` — the native Mobile Wallet Adapter path (Seeker / dApp Store). The
+ *     concrete wallet behind MWA is chosen by the OS Chooser, so there is one
+ *     opaque id for the whole native path rather than a per-wallet id.
+ *
+ * The browser-only helpers below (`ALL_PROVIDERS`, `isInstalled`, `getInjected`)
+ * never deal with `'mwa'` — it has no injected provider — so they operate over
+ * the `BrowserProviderId` subset.
+ */
+export type BrowserProviderId = 'phantom' | 'solflare' | 'backpack';
+export type WalletProviderId = BrowserProviderId | 'mwa';
 
 export interface WalletProviderInfo {
-	id: WalletProviderId;
+	id: BrowserProviderId;
 	name: string;
 	installUrl: string;
 }
@@ -116,7 +128,7 @@ export function listProviders(): Array<WalletProviderInfo & { installed: boolean
 	return ALL_PROVIDERS.map((p) => ({ ...p, installed: isInstalled(p.id) }));
 }
 
-function isInstalled(id: WalletProviderId): boolean {
+function isInstalled(id: BrowserProviderId): boolean {
 	if (typeof window === 'undefined') return false;
 	switch (id) {
 		case 'phantom':
@@ -128,7 +140,7 @@ function isInstalled(id: WalletProviderId): boolean {
 	}
 }
 
-function getInjected(id: WalletProviderId): InjectedWallet | null {
+function getInjected(id: BrowserProviderId): InjectedWallet | null {
 	if (typeof window === 'undefined') return null;
 	switch (id) {
 		case 'phantom':
@@ -186,7 +198,7 @@ function getInjected(id: WalletProviderId): InjectedWallet | null {
  * list, and rejects otherwise. Used by the store's `silentReconnect` on boot.
  */
 export async function connect(
-	id: WalletProviderId,
+	id: BrowserProviderId,
 	opts?: { onlyIfTrusted?: boolean }
 ): Promise<ConnectResult> {
 	const adapter = getInjected(id);

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Areal</string>
+    <string name="title_activity_main">Areal</string>
+    <string name="package_name">finance.areal.earn</string>
+    <string name="custom_url_scheme">finance.areal.earn</string>
+</resources>

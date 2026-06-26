@@ -3,6 +3,9 @@
 	"private": true,
 	"version": "0.1.0",
 	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build",
@@ -10,9 +13,14 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"cap:sync": "VITE_NETWORK=mainnet vite build && cap sync android",
+		"cap:copy": "VITE_NETWORK=mainnet vite build && cap copy android",
+		"cap:open": "cap open android"
 	},
 	"devDependencies": {
+		"@capacitor/android": "^8.4.1",
+		"@capacitor/cli": "^8.4.1",
 		"@sveltejs/adapter-static": "^3.0.8",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
@@ -26,8 +34,11 @@
 		"vitest": "^4.1.5"
 	},
 	"dependencies": {
+		"@capacitor/app": "^8.1.0",
+		"@capacitor/core": "^8.4.1",
 		"@coral-xyz/anchor": "^0.32.1",
 		"@meteora-ag/dlmm": "^1.9.10",
+		"@solana-mobile/wallet-adapter-mobile": "^2.2.9",
 		"@solana/spl-token": "^0.4.14",
 		"@solana/web3.js": "^1.98.4",
 		"lucide-svelte": "^0.460.0"

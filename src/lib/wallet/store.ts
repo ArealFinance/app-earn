@@ -12,12 +12,11 @@
 import { writable, get } from 'svelte/store';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import {
-	connect as providerConnect,
-	disconnect as providerDisconnect,
 	type ConnectResult,
 	type InjectedWallet,
 	type WalletProviderId
 } from './providers';
+import { getWalletBackend, type WalletBackend } from './backend';
 import {
 	fetchRwtBalance,
 	fetchStrwtBalance,
@@ -100,33 +99,76 @@ function createWalletStore() {
 	// Adapter held outside reactive state — a non-plain object reference.
 	let adapter: InjectedWallet | null = null;
 
+	/*
+	 * Platform-selected wallet backend (browser providers vs. Mobile Wallet
+	 * Adapter). Resolved once on store creation; the platform is stable within a
+	 * session. Everything below routes connect / disconnect / send through this
+	 * seam, so the store stays platform-agnostic. See `$lib/wallet/backend`.
+	 */
+	const backend: WalletBackend = getWalletBackend();
+
 	/**
 	 * Bound send function for the connected adapter. Throws if not connected.
 	 *
-	 * The wallet is used as a PURE SIGNER (`signTransaction`); we broadcast the
-	 * raw bytes via OUR own devnet `Connection`. This mirrors the main app.
+	 * TWO paths, picked by the backend:
 	 *
-	 * Why not `signAndSendTransaction`? That path uses the extension's OWN RPC,
-	 * which Phantom/Solflare pin to mainnet. On devnet it (a) simulates against
-	 * mainnet -- a misleading "insufficient SOL" warning -- and (b) broadcasts to
-	 * the wrong cluster, so the tx silently disappears. Signing locally then
-	 * sending through our cluster-correct connection lands the tx on devnet.
-	 * (Phantom may still show its mainnet-simulation warning in the approval
-	 * popup -- the user approves anyway; the tx still lands on devnet.)
+	 * 1. BROWSER (default) — the wallet is a PURE SIGNER (`signTransaction`); we
+	 *    broadcast the raw bytes via OUR own `Connection`.
+	 *
+	 *    Why not the extension's `signAndSendTransaction`? That path uses the
+	 *    extension's OWN RPC, which Phantom/Solflare pin to mainnet. On devnet it
+	 *    (a) simulates against mainnet -- a misleading "insufficient SOL" warning
+	 *    -- and (b) broadcasts to the wrong cluster, so the tx silently
+	 *    disappears. Signing locally then sending through our cluster-correct
+	 *    connection lands the tx on the intended cluster.
+	 *
+	 * 2. NATIVE / MWA (`backend.prefersSignAndSend`) — use the wallet's atomic
+	 *    `sign_and_send_transaction` via MWA (`backend.send`). On device this is
+	 *    the canonical path: the wallet submits to its RPC for the AUTHORIZED
+	 *    chain (mainnet, per `$lib/wallet/mwa`), so there is no separate broadcast
+	 *    and the approval UI shows the real, final transaction. We still poll our
+	 *    own `Connection` for confirmation so a follow-up balance refresh sees it.
 	 *
 	 * The tx builders ($lib/chain/tx, $lib/chain/meteora) set a fresh
 	 * `recentBlockhash` + `lastValidBlockHeight` + `feePayer` before calling
 	 * this, so `serialize()` and the confirmation below have what they need.
+	 *
+	 * TODO(seeker): the MWA branch needs on-device validation — confirm the tx
+	 * lands on mainnet and that confirmation polling against our `Connection`
+	 * resolves.
 	 */
 	const send: SendFn = async (tx: Transaction) => {
 		if (!adapter) throw new Error('Wallet not connected');
+
+		if (backend.prefersSignAndSend && backend.send) {
+			// Native path: wallet signs AND submits; we get back the signature.
+			const signature = await backend.send(tx, connection);
+			const { value } = await connection.confirmTransaction(
+				{
+					signature,
+					blockhash: tx.recentBlockhash!,
+					lastValidBlockHeight: tx.lastValidBlockHeight!
+				},
+				COMMITMENT
+			);
+			// A confirmed slot does NOT imply success — `value.err` is non-null when
+			// the tx landed but FAILED (e.g. a program error). Surface it instead of
+			// returning a signature for a reverted tx (would mislead the UI into
+			// showing success + refreshing stale balances).
+			if (value.err) {
+				throw new Error('Transaction failed on-chain: ' + JSON.stringify(value.err));
+			}
+			return signature;
+		}
+
+		// Browser path: sign locally, broadcast via our cluster-correct connection.
 		const signed = await adapter.signTransaction(tx); // wallet = pure signer
 		const signature = await connection.sendRawTransaction(signed.serialize(), {
 			skipPreflight: false,
 			maxRetries: 3
 		});
 		// Wait for confirmation so a subsequent balance refresh reflects the tx.
-		await connection.confirmTransaction(
+		const { value } = await connection.confirmTransaction(
 			{
 				signature,
 				blockhash: tx.recentBlockhash!,
@@ -134,6 +176,11 @@ function createWalletStore() {
 			},
 			COMMITMENT
 		);
+		// Same guard as the native path: a confirmed-but-failed tx (`value.err`)
+		// must throw, not be reported as a successful signature.
+		if (value.err) {
+			throw new Error('Transaction failed on-chain: ' + JSON.stringify(value.err));
+		}
 		return signature;
 	};
 
@@ -161,7 +208,11 @@ function createWalletStore() {
 	async function connectWallet(id: WalletProviderId): Promise<void> {
 		update((s) => ({ ...s, connecting: true, error: null }));
 		try {
-			const result: ConnectResult = await providerConnect(id);
+			// Backend-routed: browser providers on web, MWA on native. On native the
+			// OS Chooser picks the wallet and `id` is ignored. This call MUST already
+			// be inside a user-gesture handler (it is — ConnectWalletButton's onclick),
+			// because the MWA association intent is gesture-gated by the WebView.
+			const result: ConnectResult = await backend.connect(id);
 			adapter = result.adapter;
 
 			update((s) => ({
@@ -177,8 +228,12 @@ function createWalletStore() {
 
 			// Persist the provider hint so a page reload can silently reconnect
 			// via `onlyIfTrusted: true` (see `silentReconnect`). Cleared on
-			// explicit disconnect.
-			persistProvider(result.id);
+			// explicit disconnect. ONLY for backends that support silent reconnect
+			// (browser providers) — the native MWA path has no non-interactive
+			// re-auth, so we never persist its `'mwa'` id as a reconnect hint.
+			if (backend.supportsSilentReconnect) {
+				persistProvider(result.id);
+			}
 
 			// Chain reads happen after the UI flips to connected — keeps the
 			// transition snappy; balances arrive a moment later.
@@ -192,7 +247,7 @@ function createWalletStore() {
 	}
 
 	async function disconnectWallet(): Promise<void> {
-		await providerDisconnect(adapter);
+		await backend.disconnect(adapter);
 		adapter = null;
 		set(INITIAL);
 		// Drop the silent-reconnect hint so a future page load lands on a clean
@@ -214,6 +269,10 @@ function createWalletStore() {
 	 * don't keep re-attempting on every reload.
 	 */
 	async function silentReconnect(): Promise<void> {
+		// MWA (native) has no non-interactive re-auth — every connect needs a fresh
+		// user-gesture intent — so the silent path is a no-op on that backend.
+		if (!backend.supportsSilentReconnect) return;
+
 		const persisted = readPersistedProvider();
 		if (!persisted) return;
 
@@ -223,7 +282,7 @@ function createWalletStore() {
 		if (current.connected || current.connecting) return;
 
 		try {
-			const result: ConnectResult = await providerConnect(persisted, { onlyIfTrusted: true });
+			const result: ConnectResult = await backend.connect(persisted, { onlyIfTrusted: true });
 
 			// Re-check the race guard before committing — an explicit user-initiated
 			// connect may have won while we awaited the provider. If so, it owns the
