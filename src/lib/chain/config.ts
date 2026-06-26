@@ -5,8 +5,8 @@
  * The active network is selected at BUILD time via `VITE_NETWORK` (one of
  * `devnet` | `mainnet`). Devnet is the DEFAULT — an unset/unknown value falls
  * back to devnet, so existing devnet builds are unchanged. Mainnet is additive
- * and switchable: set `VITE_NETWORK=mainnet` (and the launch-time pool address,
- * see METEORA_POOL below) to point the app at the mainnet deployment.
+ * and switchable: set `VITE_NETWORK=mainnet` to point the app at the mainnet
+ * deployment (the Meteora pool is built in per network; see METEORA_POOL below).
  *
  * RPC transport: the shared `connection` uses a RESILIENT fetch (see rpc.ts).
  * It prefers a PRIMARY endpoint and transparently falls back to the public
@@ -48,9 +48,9 @@ export const NETWORK: AppNetwork =
  * Source of truth:
  *   devnet  — the 2026-05-31 re-bootstrap deploy + initialize step.
  *   mainnet — the earn/staking mainnet deployment (2026-06-12). The Meteora
- *             RWT/USDC pool does NOT exist on mainnet yet (created at launch),
- *             so it is intentionally absent here and sourced from
- *             `VITE_METEORA_POOL` at build time (see METEORA_POOL below, C1).
+ *             RWT/USDC pool lives in the Meteora section below (not in this
+ *             profile struct) as MAINNET_METEORA_POOL, overridable via
+ *             `VITE_METEORA_POOL`.
  */
 interface NetworkProfile {
 	cluster: Cluster;
@@ -280,27 +280,34 @@ export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9
 // orientation — they are only the candidate mint pair (in no fixed X/Y order);
 // the runtime pool is authoritative.
 //
-// C1 (LAUNCH): the mainnet RWT/USDC pool DOES NOT EXIST yet — it is created at
-// launch. There is NO hardcoded mainnet pool address; it is sourced from
-// `VITE_METEORA_POOL` (a base58 LB-pair address) at build time. On devnet it
-// defaults to the live devnet pool. `HAS_METEORA_POOL` is false when no pool is
-// configured (e.g. mainnet pre-launch) so the swap surface can degrade
-// gracefully instead of constructing an invalid PublicKey.
+// Both networks now have a LIVE RWT/USDC pool, hardcoded below as the per-network
+// default. `VITE_METEORA_POOL` still overrides at build time (e.g. to point a
+// build at a different pool). `HAS_METEORA_POOL` stays a guard — true whenever a
+// pool is configured (always, now that both defaults exist) — and the swap
+// surface checks it before constructing a real PublicKey.
 
 /** DLMM on-chain program (devnet == mainnet). */
 export const DLMM_PROGRAM_ID = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
 
-/** Live devnet RWT/USDC DLMM pool — the default when `VITE_METEORA_POOL` is unset. */
+/** Live devnet RWT/USDC DLMM pool (tokenX = USDC, tokenY = RWT). */
 const DEVNET_METEORA_POOL = '5i3ipA3AaXCJ7C2U7ZUoxUWQiZDUEU42ihwUGTMHvvkF';
 
 /**
- * Configured Meteora pool address (base58), or `null` when none is set.
- *   - mainnet: ENTIRELY from `VITE_METEORA_POOL` — null until launch sets it.
- *   - devnet : `VITE_METEORA_POOL` if set, else the live devnet pool.
+ * Live mainnet RWT/USDC DLMM pool (tokenX = RWT, tokenY = USDC). Discovered
+ * on-chain via the DLMM program (getProgramAccounts by mint) and verified to
+ * pair RWTeFt9…/EPjFW… (USDC), 2026-06-26 — matches the orientation note above.
+ */
+const MAINNET_METEORA_POOL = 'Ca57q4DhyQmX7ihBKyWuUtZts8sESRSNpFjjL9dtRKgd';
+
+/**
+ * Configured Meteora pool address (base58). `VITE_METEORA_POOL` overrides; else
+ * the live per-network pool above. Not null now that both networks have a
+ * deployed pool (kept as `| null` so `HAS_METEORA_POOL` stays a meaningful guard
+ * and an explicit empty `VITE_METEORA_POOL` can still disable the swap surface).
  */
 const METEORA_POOL_RAW: string | null =
 	(import.meta.env.VITE_METEORA_POOL as string | undefined)?.trim() ||
-	(IS_DEVNET ? DEVNET_METEORA_POOL : null) ||
+	(IS_DEVNET ? DEVNET_METEORA_POOL : MAINNET_METEORA_POOL) ||
 	null;
 
 /**
