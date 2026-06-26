@@ -55,6 +55,13 @@ export interface InjectedWallet {
 	 * base58 signature string. Kept for completeness; the store uses
 	 * `signTransaction` instead so broadcasting goes through our own
 	 * cluster-correct connection.
+	 *
+	 * NOTE (MWA): the native adapter (`$lib/wallet/mwa`) intentionally THROWS from
+	 * this method — its real sign-and-send needs the app's `Connection` (the
+	 * wallet submits for the authorized chain), which this signer-only signature
+	 * can't carry. The native send is routed through the backend's `send`
+	 * (`$lib/wallet/backend`), which holds the `Connection`. The store never calls
+	 * this method on the native path.
 	 */
 	signAndSendTransaction: (tx: Transaction) => Promise<string>;
 }

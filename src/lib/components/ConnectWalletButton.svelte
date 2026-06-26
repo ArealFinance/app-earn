@@ -2,19 +2,36 @@
 	/**
 	 * Big primary CTA + wallet picker.
 	 *
-	 * Renders a single "Connect Wallet" button. Clicking it opens an
-	 * overlay-style picker listing Phantom / Solflare / Backpack with an
-	 * install link for any provider not detected in the browser.
+	 * BROWSER: opens an overlay-style picker listing Phantom / Solflare / Backpack
+	 * with an install link for any provider not detected in the browser.
+	 *
+	 * NATIVE (Capacitor / Seeker): the injected browser providers do NOT exist in
+	 * the Android WebView, so we render a SINGLE "Connect Wallet" action instead of
+	 * the provider list — the OS Mobile Wallet Adapter Chooser is the real picker.
+	 * Tapping dispatches `wallet.connect('mwa')` from inside the click handler
+	 * (MWA's association intent is gesture-gated; never auto-connect on mount).
+	 *
+	 * This is the ONE component that legitimately branches on platform: the connect
+	 * UX genuinely differs (provider list vs. OS Chooser). Everything downstream
+	 * (the `wallet` store, actions, balances) stays platform-agnostic.
 	 */
 	import { Wallet } from 'lucide-svelte';
 	import { listProviders, type WalletProviderId } from '$lib/wallet/providers';
+	import { isNativePlatform } from '$lib/platform';
 	import { wallet } from '$lib/wallet/store';
 
+	// Resolved once: the platform is stable for the lifetime of the shell.
+	const native = isNativePlatform();
+
 	let open = $state(false);
+	// `connecting` holds the id currently being connected. On native this is the
+	// single `'mwa'` id; on browser it's the chosen provider id.
 	let connecting = $state<WalletProviderId | null>(null);
 	let errorMessage = $state<string | null>(null);
 
-	const providers = $derived.by(() => listProviders());
+	// Provider list is browser-only — never evaluated on native (no injected
+	// providers exist in the WebView).
+	const providers = $derived.by(() => (native ? [] : listProviders()));
 
 	function openPicker(): void {
 		open = true;
@@ -34,6 +51,20 @@
 			window.open(info.installUrl, '_blank', 'noopener,noreferrer');
 			return;
 		}
+		await runConnect(id);
+	}
+
+	/**
+	 * Native connect: dispatch MWA directly from this tap handler (gesture
+	 * requirement). The OS Chooser picks the concrete wallet — there is no
+	 * per-provider row to select first.
+	 */
+	async function connectMwaNative(): Promise<void> {
+		await runConnect('mwa');
+	}
+
+	/** Shared connect flow — identical loading/error/close UX for both branches. */
+	async function runConnect(id: WalletProviderId): Promise<void> {
 		connecting = id;
 		errorMessage = null;
 		try {
@@ -73,37 +104,69 @@
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={handleKeydown}
 		>
-			<header>
-				<h2>Connect a wallet</h2>
-				<p>Choose your preferred Solana wallet.</p>
-			</header>
+			{#if native}
+				<header>
+					<h2>Connect a wallet</h2>
+					<p>Choose a wallet from your device.</p>
+				</header>
 
-			<ul class="list">
-				{#each providers as p (p.id)}
+				<!-- NATIVE: one action. The OS Mobile Wallet Adapter Chooser is the
+				     actual picker, so we don't list per-provider rows. -->
+				<ul class="list">
 					<li>
 						<button
 							class="row"
 							type="button"
-							onclick={() => pick(p.id)}
-							disabled={connecting !== null && connecting !== p.id}
+							onclick={connectMwaNative}
+							disabled={connecting !== null}
 						>
 							<span class="row-icon" aria-hidden="true">
 								<Wallet size={18} />
 							</span>
-							<span class="row-name">{p.name}</span>
+							<span class="row-name">Connect Wallet</span>
 							<span class="row-state">
-								{#if connecting === p.id}
+								{#if connecting === 'mwa'}
 									Connecting…
-								{:else if p.installed}
-									Detected
 								{:else}
-									Install ↗
+									Choose ↗
 								{/if}
 							</span>
 						</button>
 					</li>
-				{/each}
-			</ul>
+				</ul>
+			{:else}
+				<header>
+					<h2>Connect a wallet</h2>
+					<p>Choose your preferred Solana wallet.</p>
+				</header>
+
+				<ul class="list">
+					{#each providers as p (p.id)}
+						<li>
+							<button
+								class="row"
+								type="button"
+								onclick={() => pick(p.id)}
+								disabled={connecting !== null && connecting !== p.id}
+							>
+								<span class="row-icon" aria-hidden="true">
+									<Wallet size={18} />
+								</span>
+								<span class="row-name">{p.name}</span>
+								<span class="row-state">
+									{#if connecting === p.id}
+										Connecting…
+									{:else if p.installed}
+										Detected
+									{:else}
+										Install ↗
+									{/if}
+								</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 
 			{#if errorMessage}
 				<p class="error">{errorMessage}</p>
