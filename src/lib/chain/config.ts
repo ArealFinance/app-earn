@@ -137,12 +137,12 @@ export const COMMITMENT: Commitment = 'confirmed';
  */
 export const FAUCET_API_BASE: string =
 	((import.meta.env.VITE_FAUCET_API_BASE as string | undefined) ?? '').trim() ||
-	// Default to the live backend RPC proxy (api.areal.network, /api prefix →
+	// Default to the live backend RPC proxy (rpc.areal.finance, /api prefix →
 	// JSON-RPC at /api/rpc). Hardcoded (like the Meteora pool) because the CF Pages
 	// dashboard env var for this didn't reach the Vite build; the URL is public (no
 	// secret). `VITE_FAUCET_API_BASE` overrides — local dev sets it via `.env`, so
 	// this default only takes effect on the prod (CF, no `.env`) build.
-	'https://api.areal.network/api';
+	'https://rpc.areal.finance/api';
 
 /** Operator RPC override (private endpoint). Empty/undefined when unset. */
 const RPC_URL_OVERRIDE: string = ((import.meta.env.VITE_RPC_URL as string) || '').trim();
