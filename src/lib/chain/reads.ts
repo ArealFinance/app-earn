@@ -37,11 +37,12 @@
  *   SPL Token: amount u64 (LE) at byte offset 64.
  */
 
-import { PublicKey, type GetProgramAccountsFilter } from '@solana/web3.js';
+import { Connection, PublicKey, type GetProgramAccountsFilter } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
 	connection,
 	COMMITMENT,
+	RPC_URL_FALLBACK,
 	EARN_CONFIG_PDA,
 	STAKING_CONFIG_PDA,
 	STAKING_PROGRAM_ID,
@@ -67,6 +68,16 @@ import type { MintQuoteInputs } from './mint-quote';
  * (Cross-checked against contracts/earn/src/state.rs running offsets.)
  */
 const EARN_CONFIG_MINT_FEE_BPS_OFFSET = 89;
+
+let programAccountsFallbackConnection: Connection | null | undefined;
+
+function getProgramAccountsFallbackConnection(): Connection | null {
+	if (programAccountsFallbackConnection !== undefined) return programAccountsFallbackConnection;
+	programAccountsFallbackConnection = RPC_URL_FALLBACK
+		? new Connection(RPC_URL_FALLBACK, { commitment: COMMITMENT })
+		: null;
+	return programAccountsFallbackConnection;
+}
 
 // ── Little-endian integer decoders ──────────────────────────────────────────────
 
@@ -248,9 +259,19 @@ export async function fetchPendingUnstakes(owner: PublicKey): Promise<PendingUns
 			filters
 		});
 	} catch {
-		// If the RPC rejects getProgramAccounts (rate limit / disabled), degrade
-		// to an empty list rather than crashing the dashboard.
-		return [];
+		// The backend RPC proxy intentionally allowlists methods and may reject
+		// getProgramAccounts. This read is idempotent, so retry against the public
+		// cluster fallback before degrading to an empty list.
+		const fallback = getProgramAccountsFallbackConnection();
+		if (!fallback) return [];
+		try {
+			accounts = await fallback.getProgramAccounts(STAKING_PROGRAM_ID, {
+				commitment: COMMITMENT,
+				filters
+			});
+		} catch {
+			return [];
+		}
 	}
 
 	const tickets: PendingUnstake[] = accounts.map(({ pubkey, account }) => {
