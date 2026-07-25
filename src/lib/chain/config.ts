@@ -92,13 +92,12 @@ const PROFILES: Record<AppNetwork, NetworkProfile> = {
 		rwtMint: 'RWTeFt9M635Tf6w6yveAoXQR2ZwfXs7MfA7W3grDuGT',
 		strwtMint: 'sRWTy1bkqvRegb31RETanhbAtJ7eXN6XsTvaqBRh6kA',
 		usdcMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-		// EarnConfig / StakingConfig PDAs (seeds ["earn_config"] / ["staking_config"])
-		// derived from the mainnet program IDs above.
-		earnConfigPda: deriveConfigPda('earn_config', 'GTASb5UcQEkcRWuMwfoNABBBNJitdxWByobMLZZ2UCw8'),
-		stakingConfigPda: deriveConfigPda(
-			'staking_config',
-			'9tEKvDwkqkveBvmQfEzgPKWSNCDTGSSqYz4ZE6pP5DGY'
-		),
+		// Validated mainnet PDAs for seeds ["earn_config"] / ["staking_config"].
+		// Keep these as data instead of deriving during module evaluation: web3's
+		// PDA search depends on browser crypto primitives that are unavailable in
+		// some Vitest/jsdom import paths.
+		earnConfigPda: '5GyVeryGnTPPtfteYaj5pNUjE9s2DDDpDnccgoFjV8L3',
+		stakingConfigPda: 'EwXST2yoQRBf3FEYe6fyoseatHaVypYck3ZQ5bEGzEUe',
 		basketVault: 'Ew8GFA29zsUXzf8dmDmesbHVCSfXVAVnPWYtr9nF3sqo',
 		// poolVault — the on-chain StakingConfig.pool_vault RWT token account
 		// (StakingConfig-PDA-owned, mint = RWTeFt9…), holding active + reserved RWT.
@@ -113,14 +112,6 @@ const PROFILES: Record<AppNetwork, NetworkProfile> = {
 		daoFeeDestination: '68AHfVCW4CJGCKxfUdLgj3WKe8qF8eSztmEd7VnPFYkg'
 	}
 };
-
-/** Derive a config PDA (base58) from a seed + program ID. Used for mainnet PDAs. */
-function deriveConfigPda(seed: string, programId: string): string {
-	return PublicKey.findProgramAddressSync(
-		[new TextEncoder().encode(seed)],
-		new PublicKey(programId)
-	)[0].toBase58();
-}
 
 const NET = PROFILES[NETWORK];
 
