@@ -21,8 +21,9 @@ import {
 	fetchRwtBalance,
 	fetchStrwtBalance,
 	fetchUsdcBalance,
-	fetchPendingUnstakes
+	fetchDevnetUnstakeTickets
 } from '$lib/chain/reads';
+import { fetchUnstakeTickets, usesUnstakeTicketsApi } from '$lib/chain/unstake-tickets';
 import {
 	buildMintRwt,
 	buildStake,
@@ -31,7 +32,7 @@ import {
 	type SendFn
 } from '$lib/chain/tx';
 import { buildSellRwtTx, buildBuyRwtTx } from '$lib/chain/meteora';
-import { connection, COMMITMENT } from '$lib/chain/config';
+import { connection, COMMITMENT, NETWORK } from '$lib/chain/config';
 import type { PendingUnstake } from '$lib/earn/types';
 
 export interface WalletState {
@@ -45,8 +46,12 @@ export interface WalletState {
 	rwt: number;
 	/** stRWT staking share token (on-chain ATA). */
 	strwt: number;
-	/** Pending unstake tickets in cooldown (on-chain UnstakeTicket PDAs). */
+	/** Pending and mature unstake tickets from the indexed backend API. */
 	pendingUnstakes: PendingUnstake[];
+	/** True while tickets are being refreshed. Last successful tickets remain visible. */
+	ticketsLoading: boolean;
+	/** Ticket API failure, distinct from an empty ticket list. */
+	ticketsError: string | null;
 	/** True while balances are being (re)fetched from chain. */
 	loading: boolean;
 	error: string | null;
@@ -62,6 +67,8 @@ const INITIAL: WalletState = {
 	rwt: 0,
 	strwt: 0,
 	pendingUnstakes: [],
+	ticketsLoading: false,
+	ticketsError: null,
 	loading: false,
 	error: null
 };
@@ -98,6 +105,8 @@ function createWalletStore() {
 
 	// Adapter held outside reactive state — a non-plain object reference.
 	let adapter: InjectedWallet | null = null;
+	// Ignore out-of-order ticket responses when a manual retry races a full refresh.
+	let ticketRequestVersion = 0;
 
 	/*
 	 * Platform-selected wallet backend (browser providers vs. Mobile Wallet
@@ -106,6 +115,13 @@ function createWalletStore() {
 	 * seam, so the store stays platform-agnostic. See `$lib/wallet/backend`.
 	 */
 	const backend: WalletBackend = getWalletBackend();
+
+	/** Keep ticket discovery on the active cluster: REST is production mainnet-only. */
+	function fetchTickets(pubkey: PublicKey): Promise<PendingUnstake[]> {
+		return usesUnstakeTicketsApi(NETWORK)
+			? fetchUnstakeTickets(pubkey.toBase58())
+			: fetchDevnetUnstakeTickets(pubkey);
+	}
 
 	/**
 	 * Bound send function for the connected adapter. Throws if not connected.
@@ -184,24 +200,44 @@ function createWalletStore() {
 		return signature;
 	};
 
-	/** Pulls all on-chain balances + tickets for a wallet into the store. */
+	/** Pulls all balance reads and independently refreshes indexed unstake tickets. */
 	async function loadChainState(pubkey: PublicKey): Promise<void> {
-		update((s) => ({ ...s, loading: true }));
+		update((s) => ({ ...s, loading: true, ticketsLoading: true, ticketsError: null }));
+
+		const balances = Promise.all([
+			fetchUsdcBalance(pubkey),
+			fetchRwtBalance(pubkey),
+			fetchStrwtBalance(pubkey)
+		]);
+		const requestVersion = ++ticketRequestVersion;
+		const tickets = fetchTickets(pubkey);
+
 		try {
-			const [usdc, rwt, strwt, pendingUnstakes] = await Promise.all([
-				fetchUsdcBalance(pubkey),
-				fetchRwtBalance(pubkey),
-				fetchStrwtBalance(pubkey),
-				fetchPendingUnstakes(pubkey)
-			]);
+			const [usdc, rwt, strwt] = await balances;
 			update((s) =>
 				s.connected && s.publicKey?.equals(pubkey)
-					? { ...s, usdc, rwt, strwt, pendingUnstakes, loading: false }
+					? { ...s, usdc, rwt, strwt, loading: false }
 					: s
 			);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Failed to load balances';
 			update((s) => ({ ...s, loading: false, error: message }));
+		}
+
+		try {
+			const pendingUnstakes = await tickets;
+			update((s) =>
+				s.connected && s.publicKey?.equals(pubkey) && requestVersion === ticketRequestVersion
+					? { ...s, pendingUnstakes, ticketsLoading: false, ticketsError: null }
+					: s
+			);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Unable to load unstake tickets';
+			update((s) =>
+				s.connected && s.publicKey?.equals(pubkey) && requestVersion === ticketRequestVersion
+					? { ...s, ticketsLoading: false, ticketsError: message }
+					: s
+			);
 		}
 	}
 
@@ -322,6 +358,36 @@ function createWalletStore() {
 		await loadChainState(current.publicKey);
 	}
 
+	/** Retry only the ticket API, preserving the last confirmed list on failure. */
+	async function refreshUnstakeTickets(): Promise<void> {
+		const current = get({ subscribe });
+		if (!current.publicKey) return;
+
+		const pubkey = current.publicKey;
+		const requestVersion = ++ticketRequestVersion;
+		update((s) =>
+			s.connected && s.publicKey?.equals(pubkey)
+				? { ...s, ticketsLoading: true, ticketsError: null }
+				: s
+		);
+
+		try {
+			const pendingUnstakes = await fetchTickets(pubkey);
+			update((s) =>
+				s.connected && s.publicKey?.equals(pubkey) && requestVersion === ticketRequestVersion
+					? { ...s, pendingUnstakes, ticketsLoading: false, ticketsError: null }
+					: s
+			);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : 'Unable to load unstake tickets';
+			update((s) =>
+				s.connected && s.publicKey?.equals(pubkey) && requestVersion === ticketRequestVersion
+					? { ...s, ticketsLoading: false, ticketsError: message }
+					: s
+			);
+		}
+	}
+
 	function requirePubkey(): PublicKey {
 		const current = get({ subscribe });
 		if (!current.publicKey) throw new Error('Wallet not connected');
@@ -385,6 +451,7 @@ function createWalletStore() {
 		disconnect: disconnectWallet,
 		silentReconnect,
 		refreshBalances,
+		refreshUnstakeTickets,
 		mintRwt,
 		stakeRwt,
 		sellRwt,

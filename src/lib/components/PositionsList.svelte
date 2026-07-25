@@ -26,6 +26,14 @@
 		rwt: number;
 		strwt: number;
 		pendingUnstakes: PendingUnstake[];
+		/** Ticket API is refreshing; existing tickets remain visible. */
+		ticketsLoading: boolean;
+		/** Ticket API failure. This must never be rendered as an empty portfolio. */
+		ticketsError: string | null;
+		/** Last failed complete-unstake transaction, if any. */
+		claimError?: string | null;
+		/** Ticket whose claim transaction is currently awaiting wallet/chain completion. */
+		claimingTicketId?: string | null;
 		/** Book NAV price per RWT (USD) — used to value positions. */
 		bookNav: number;
 		/** stRWT → RWT rate — to value stRWT in RWT before USD. */
@@ -38,10 +46,26 @@
 		onBuy: () => void;
 		/** Claim a matured unstake ticket. */
 		onClaim: (ticketId: string) => void;
+		/** Retry the ticket-only API request. */
+		onRetryTickets: () => void;
 	}
 
-	let { rwt, strwt, pendingUnstakes, bookNav, strwtRate, apy, accumulatingHint, onBuy, onClaim }: Props =
-		$props();
+	let {
+		rwt,
+		strwt,
+		pendingUnstakes,
+		ticketsLoading,
+		ticketsError,
+		claimError = null,
+		claimingTicketId = null,
+		bookNav,
+		strwtRate,
+		apy,
+		accumulatingHint,
+		onBuy,
+		onClaim,
+		onRetryTickets
+	}: Props = $props();
 
 	const rwtUsd = $derived(rwt * bookNav);
 	const strwtRwt = $derived(strwt * strwtRate);
@@ -53,7 +77,22 @@
 <section class="positions" aria-label="My positions">
 	<h2 class="title">My positions</h2>
 
-	{#if isEmpty}
+	{#if ticketsLoading}
+		<p class="ticket-status" role="status">Loading unstake tickets…</p>
+	{/if}
+
+	{#if ticketsError}
+		<div class="ticket-status ticket-error" role="alert">
+			<span>Couldn’t load unstake tickets. {pendingUnstakes.length > 0 ? 'Showing the last confirmed list.' : ''}</span>
+			<button class="retry-btn" type="button" onclick={onRetryTickets}>Retry</button>
+		</div>
+	{/if}
+
+	{#if claimError}
+		<p class="ticket-status ticket-action-error" role="alert">Couldn’t claim RWT: {claimError}</p>
+	{/if}
+
+	{#if isEmpty && !ticketsLoading && !ticketsError}
 		<div class="empty">
 			<Coins size={28} aria-hidden="true" />
 			<p class="empty-title">Nothing here yet</p>
@@ -107,8 +146,14 @@
 					</span>
 					<span class="amounts">
 						{#if isMatured(ticket.unlockTs)}
-							<button class="claim-btn" type="button" onclick={() => onClaim(ticket.id)}>
-								Claim RWT
+							<button
+								class="claim-btn"
+								type="button"
+								disabled={claimingTicketId !== null}
+								aria-busy={claimingTicketId === ticket.id}
+								onclick={() => onClaim(ticket.id)}
+							>
+								{claimingTicketId === ticket.id ? 'Claiming…' : 'Claim RWT'}
 							</button>
 						{:else}
 							<span class="cooldown tabular">{formatCountdown(ticket.unlockTs)}</span>
@@ -204,6 +249,41 @@
 		color: var(--color-text-muted);
 	}
 
+	.ticket-status {
+		margin: 0;
+		font-size: var(--text-xs);
+		color: var(--color-text-muted);
+	}
+
+	.ticket-error {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: var(--space-3);
+		color: var(--color-warning);
+		background: var(--color-surface-inset);
+		border-radius: var(--radius-sm);
+	}
+
+	.ticket-action-error {
+		padding: var(--space-3);
+		color: var(--color-warning);
+		background: var(--color-surface-inset);
+		border-radius: var(--radius-sm);
+	}
+
+	.retry-btn {
+		flex-shrink: 0;
+		padding: var(--space-1) var(--space-2);
+		font-size: var(--text-xs);
+		font-weight: var(--font-weight-semibold);
+		color: var(--color-text);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+	}
+
 	.amounts {
 		display: flex;
 		flex-direction: column;
@@ -242,6 +322,11 @@
 
 	.claim-btn:hover {
 		background-color: var(--color-purple-500);
+	}
+
+	.claim-btn:disabled {
+		cursor: wait;
+		opacity: 0.65;
 	}
 
 	.empty {

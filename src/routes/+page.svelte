@@ -103,6 +103,8 @@
 	const rwt = $derived($wallet.rwt);
 	const strwt = $derived($wallet.strwt);
 	const pendingUnstakes = $derived($wallet.pendingUnstakes);
+	const ticketsLoading = $derived($wallet.ticketsLoading);
+	const ticketsError = $derived($wallet.ticketsError);
 
 	// Total portfolio value in USD: liquid RWT + stRWT valued in RWT, all × Book NAV.
 	// Pending-unstake RWT is reserved (fixed) but still belongs to the user → include.
@@ -185,17 +187,25 @@
 	}
 
 	let claimError = $state<string | null>(null);
+	let claimingTicketId = $state<string | null>(null);
 
 	async function handleClaim(ticketId: string): Promise<void> {
 		// PositionsList passes the ticket's nonce as the id payload for claiming.
 		const ticket = pendingUnstakes.find((t) => t.id === ticketId);
-		if (!ticket?.nonce) return;
+		if (!ticket?.nonce || claimingTicketId !== null) return;
 		claimError = null;
+		claimingTicketId = ticketId;
 		try {
 			await wallet.completeUnstake(ticket.nonce);
 		} catch (e) {
 			claimError = e instanceof Error ? e.message : 'Claim failed';
+		} finally {
+			claimingTicketId = null;
 		}
+	}
+
+	function retryUnstakeTickets(): void {
+		void wallet.refreshUnstakeTickets();
 	}
 </script>
 
@@ -246,12 +256,17 @@
 				{rwt}
 				{strwt}
 				{pendingUnstakes}
+				{ticketsLoading}
+				ticketsError={ticketsError}
+				{claimError}
+				{claimingTicketId}
 				{bookNav}
 				{strwtRate}
 				apy={periodApy}
 				accumulatingHint={notReadyHint}
 				onBuy={() => openSheet('buy')}
 				onClaim={handleClaim}
+				onRetryTickets={retryUnstakeTickets}
 			/>
 
 			<RatesBar {bookNav} {marketPrice} {strwtRate} />

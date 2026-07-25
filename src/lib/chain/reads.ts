@@ -42,6 +42,7 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
 	connection,
 	COMMITMENT,
+	NETWORK,
 	RPC_URL_FALLBACK,
 	EARN_CONFIG_PDA,
 	STAKING_CONFIG_PDA,
@@ -103,7 +104,6 @@ function readU16LE(buf: Uint8Array, offset: number): number {
 
 function readI64LE(buf: Uint8Array, offset: number): bigint {
 	const u = readU64LE(buf, offset);
-	// Two's-complement sign correction for the top bit.
 	return u >= 1n << 63n ? u - (1n << 64n) : u;
 }
 
@@ -234,19 +234,17 @@ export async function fetchUsdcBalance(owner: PublicKey): Promise<number> {
 	return fromScaled(await readTokenAccountAmount(ata));
 }
 
-// ── Pending unstake tickets ──────────────────────────────────────────────────────
+// ── Devnet unstake tickets ─────────────────────────────────────────────────────
 
 /**
- * Scans the staking program for UnstakeTicket accounts owned by `owner`.
- *
- * Filter: dataSize == 65 (8 disc + 57 body) AND memcmp at offset 8 (the
- * `owner` field) == the wallet pubkey. Returns the decoded tickets, sorted by
- * unlock time ascending.
- *
- * getProgramAccounts is heavier than a single read but the public devnet RPC
- * tolerates it for the small ticket set of a demo wallet.
+ * Reads devnet ticket PDAs directly. Mainnet MUST use the indexed REST API
+ * (`unstake-tickets.ts`) so its production RPC proxy never receives this scan.
  */
-export async function fetchPendingUnstakes(owner: PublicKey): Promise<PendingUnstake[]> {
+export async function fetchDevnetUnstakeTickets(owner: PublicKey): Promise<PendingUnstake[]> {
+	if (NETWORK !== 'devnet') {
+		throw new Error('Direct ticket scan is only available on devnet');
+	}
+
 	const filters: GetProgramAccountsFilter[] = [
 		{ dataSize: 65 },
 		{ memcmp: { offset: 8, bytes: owner.toBase58() } }
@@ -259,35 +257,23 @@ export async function fetchPendingUnstakes(owner: PublicKey): Promise<PendingUns
 			filters
 		});
 	} catch {
-		// The backend RPC proxy intentionally allowlists methods and may reject
-		// getProgramAccounts. This read is idempotent, so retry against the public
-		// cluster fallback before degrading to an empty list.
 		const fallback = getProgramAccountsFallbackConnection();
-		if (!fallback) return [];
-		try {
-			accounts = await fallback.getProgramAccounts(STAKING_PROGRAM_ID, {
-				commitment: COMMITMENT,
-				filters
-			});
-		} catch {
-			return [];
-		}
+		if (!fallback) throw new Error('Unable to load devnet unstake tickets');
+		accounts = await fallback.getProgramAccounts(STAKING_PROGRAM_ID, {
+			commitment: COMMITMENT,
+			filters
+		});
 	}
 
-	const tickets: PendingUnstake[] = accounts.map(({ pubkey, account }) => {
+	const tickets = accounts.map(({ pubkey, account }): PendingUnstake => {
 		const data = account.data;
-		const amountRwt = fromScaled(readU64LE(data, 40));
-		const unlockTsSec = readI64LE(data, 48);
-		const nonce = readU64LE(data, 56);
 		return {
 			id: pubkey.toBase58(),
-			amountRwt,
-			unlockTs: Number(unlockTsSec) * 1000,
-			// nonce is needed to build complete_unstake; carried as a string-safe field.
-			nonce: nonce.toString()
+			amountRwt: fromScaled(readU64LE(data, 40)),
+			unlockTs: Number(readI64LE(data, 48)) * 1000,
+			nonce: readU64LE(data, 56).toString()
 		};
 	});
 
-	tickets.sort((a, b) => a.unlockTs - b.unlockTs);
-	return tickets;
+	return tickets.sort((a, b) => a.unlockTs - b.unlockTs);
 }

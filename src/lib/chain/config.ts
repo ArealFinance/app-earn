@@ -144,6 +144,18 @@ export const FAUCET_API_BASE: string =
 	// this default only takes effect on the prod (CF, no `.env`) build.
 	'https://rpc.areal.finance/api';
 
+/**
+ * Wallet-specific unstake-ticket route, relative to `FAUCET_API_BASE`.
+ *
+ * The backend route is deliberately configurable so deployments that mount the
+ * public API under a different prefix do not need a client rebuild. The client
+ * appends the wallet address unless the path contains an explicit `:owner`
+ * placeholder.
+ */
+export const UNSTAKE_TICKETS_PATH: string =
+	((import.meta.env.VITE_UNSTAKE_TICKETS_PATH as string | undefined) ?? '').trim() ||
+	'/earn/wallets/:owner/unstake-tickets';
+
 /** Operator RPC override (private endpoint). Empty/undefined when unset. */
 const RPC_URL_OVERRIDE: string = ((import.meta.env.VITE_RPC_URL as string) || '').trim();
 
